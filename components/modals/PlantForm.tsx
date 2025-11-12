@@ -34,28 +34,49 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
     const allTechnicians = users.filter(u => u.role === Role.TECHNICIAN);
     const allSupervisors = users.filter(u => u.role === Role.SUPERVISOR);
 
-    // `useEffect` para inicializar ou resetar o formulário quando o modal é aberto ou os dados mudam.
+    // ADICIONADO: reset controlado apenas na transição fechado→aberto
+    const wasOpenRef = React.useRef(false);
+
     useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
         if (initialData) {
-            // Se for edição, preenche o formulário com os dados da usina.
-            setFormData(initialData);
-            // E preenche as listas de usuários associados a esta usina.
-            setAssignedTechnicians(users.filter(u => u.role === Role.TECHNICIAN && u.plantIds?.includes(initialData.id)).map(u => u.id));
-            setAssignedSupervisors(users.filter(u => u.role === Role.SUPERVISOR && u.plantIds?.includes(initialData.id)).map(u => u.id));
+        // Se for edição, preenche com CÓPIAS para não mutar referências
+        setFormData({
+            ...initialData,
+            subPlants: [...initialData.subPlants],
+            assets: [...initialData.assets],
+        });
+        setAssignedTechnicians(
+            users.filter(u => u.role === Role.TECHNICIAN && u.plantIds?.includes(initialData.id)).map(u => u.id)
+        );
+        setAssignedSupervisors(
+            users.filter(u => u.role === Role.SUPERVISOR && u.plantIds?.includes(initialData.id)).map(u => u.id)
+        );
         } else {
-            // Se for criação, reseta o formulário para o estado inicial.
-            setFormData({
-                client: '', name: '',
-                subPlants: [{ id: 1, inverterCount: 0 }],
-                stringCount: 0, trackerCount: 0,
-                assets: DEFAULT_PLANT_ASSETS,
-            });
-            setAssignedTechnicians([]);
-            setAssignedSupervisors([]);
+        // Estado inicial para criação
+        setFormData({
+            client: '', name: '',
+            subPlants: [{ id: 1, inverterCount: 0 }],
+            stringCount: 0, trackerCount: 0,
+            assets: DEFAULT_PLANT_ASSETS,
+        });
+        setAssignedTechnicians([]);
+        setAssignedSupervisors([]);
         }
-    }, [initialData, isOpen, users]);
+        wasOpenRef.current = true;
+    }
+    if (!isOpen && wasOpenRef.current) {
+        wasOpenRef.current = false;
+    }
+    }, [isOpen, initialData, users]);
 
     const isEditing = !!initialData;
+
+    // ADICIONADO: título estável para esta abertura do modal
+    const stableTitleRef = React.useRef(
+    isEditing ? `Editar Usina ${initialData?.name ?? ''}` : 'Nova Usina'
+    );
+
 
     // Manipuladores de eventos para atualizar o estado do formulário.
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,7 +126,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
     const UserAssignmentField: React.FC<{title: string, users: typeof allTechnicians, selected: string[], onChange: (id: string) => void}> = ({ title, users, selected, onChange }) => ( <FormField label={title}><div className="grid grid-cols-2 gap-2 p-2 border dark:border-gray-600 rounded-md max-h-32 overflow-y-auto">{users.map(user => ( <label key={user.id} className="flex items-center space-x-2"><input type="checkbox" checked={selected.includes(user.id)} onChange={() => onChange(user.id)} className="rounded" /><span>{user.name}</span></label>))}</div></FormField> );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? `Editar Usina ${initialData.name}` : 'Nova Usina'} footer={<><button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">Cancelar</button><button onClick={handleSubmit} type="submit" form="plant-form" className="ml-3 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Salvar</button></>}>
+        <Modal isOpen={isOpen} onClose={onClose} title={stableTitleRef.current} footer={<><button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500">Cancelar</button><button onClick={handleSubmit} type="submit" form="plant-form" className="ml-3 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">Salvar</button></>}>
             <form id="plant-form" onSubmit={handleSubmit} className="space-y-4">
                  <FormField label="Cliente"><input type="text" name="client" value={formData.client} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600" /></FormField>
                  <FormField label="Nome da Usina"><input type="text" name="name" value={formData.name} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm dark:bg-gray-700 dark:border-gray-600" /></FormField>

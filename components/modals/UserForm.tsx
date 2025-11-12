@@ -7,6 +7,7 @@ import { User, Role } from '../../types';
 import Modal from './Modal';
 import { ROLES } from '../../constants';
 
+
 // Define as propriedades que o formulário de usuário espera receber.
 interface UserFormProps {
     isOpen: boolean;
@@ -20,6 +21,13 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
     const { addUser, updateUser, users, plants } = useData();
     // Determina se o formulário está no modo de edição.
     const isEditing = !!initialData;
+
+    
+    // ADICIONADO: título estável apenas para esta abertura do modal
+    // Motivo: evita re-render do cabeçalho a cada tecla enquanto digita.
+    const stableTitleRef = React.useRef(
+        isEditing ? `Editar Usuário: ${initialData?.name ?? ''}` : 'Novo Usuário'
+    );
 
     // Função para obter o estado inicial do formulário, seja para um novo usuário ou para edição.
     const getInitialState = () => {
@@ -36,12 +44,21 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
     // Estado para armazenar os dados do formulário.
     const [formData, setFormData] = useState<Partial<User>>(getInitialState());
 
-    // `useEffect` para resetar o estado do formulário sempre que o modal for aberto.
+    // ADICIONADO: util para detectar transição de open (evita reset durante digitação)
+    // Motivo: só reseta quando o modal acabou de abrir; se algum render acontecer enquanto digita, não perdemos foco.
+    const wasOpenRef = React.useRef(false);
+
     useEffect(() => {
-        if (isOpen) {
-            setFormData(getInitialState());
-        }
-    }, [initialData, isOpen, role]);
+    // Executa reset apenas quando o modal acabou de abrir
+    if (isOpen && !wasOpenRef.current) {
+        setFormData(getInitialState());
+        wasOpenRef.current = true;
+    }
+    // Marca como fechado quando o modal fecha
+    if (!isOpen && wasOpenRef.current) {
+        wasOpenRef.current = false;
+    }
+    }, [isOpen, initialData, role]); // mantém seus comentários, apenas controla a transição
 
     // Filtra a lista de usuários para obter apenas os supervisores, para o dropdown.
     const supervisors = users.filter(u => u.role === Role.SUPERVISOR);
@@ -102,7 +119,7 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={isEditing ? `Editar Usuário: ${initialData?.name}` : 'Novo Usuário'}
+            title={stableTitleRef.current}
             footer={
                 <>
                     <button onClick={onClose} className="btn-secondary">Cancelar</button>
