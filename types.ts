@@ -3,10 +3,12 @@
 
 // Define os diferentes níveis de acesso (funções) dos usuários no sistema.
 export enum Role {
-    ADMIN = 'Admin',
-    OPERATOR = 'Operador',
-    SUPERVISOR = 'Supervisor',
-    TECHNICIAN = 'Técnico',
+  ADMIN = 'ADMIN',
+  SUPERVISOR = 'SUPERVISOR',
+  TECHNICIAN = 'TECHNICIAN',
+  OPERATOR = 'OPERATOR',
+  COORDINATOR = 'COORDINATOR', // NOVO
+  ASSISTANT = 'ASSISTANT',     // NOVO (Auxiliar; pode não ter login)
 }
 
 // Define os possíveis status de uma Ordem de Serviço (OS), representando as colunas no painel Kanban.

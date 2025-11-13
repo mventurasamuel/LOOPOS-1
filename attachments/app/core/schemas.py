@@ -1,0 +1,68 @@
+# /attachments/app/core/schemas.py
+# Esquemas Pydantic para requests/responses da API.
+
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field
+
+# -------------------- USERS --------------------
+RoleLiteral = Literal[
+    "ADMIN",
+    "SUPERVISOR",
+    "TECHNICIAN",
+    "OPERATOR",
+    "COORDINATOR",
+    "ASSISTANT",
+]
+
+class UserBase(BaseModel):
+    name: str
+    username: str = Field(
+        min_length=3, max_length=32,
+        pattern=r"^[a-z0-9._-]+$",
+        description="login sem espaços, ex: fabi"
+    )
+    phone: Optional[str] = None
+    role: RoleLiteral
+    can_login: bool = True
+    supervisor_id: Optional[str] = None  # vínculo hierárquico (técnico -> supervisor)
+
+class UserCreate(UserBase):
+    password: Optional[str] = None
+
+class UserUpdate(UserBase):
+    password: Optional[str] = None
+
+class UserOut(UserBase):
+    id: str
+    plantIds: List[str] = []  # preenchido a partir das atribuições por usina
+
+
+# -------------------- PLANTS --------------------
+class SubPlant(BaseModel):
+    id: int
+    inverterCount: int = 0
+
+class PlantBase(BaseModel):
+    client: str
+    name: str
+    stringCount: int = 0
+    trackerCount: int = 0
+    subPlants: List[SubPlant] = Field(default_factory=list)
+    assets: List[str] = Field(default_factory=list)
+
+class PlantCreate(PlantBase):
+    pass
+
+class PlantUpdate(PlantBase):
+    pass
+
+class PlantOut(PlantBase):
+    id: str
+
+
+# -------------------- ASSIGNMENTS --------------------
+class AssignmentsPayload(BaseModel):
+    coordinatorId: Optional[str] = None
+    supervisorIds: List[str] = Field(default_factory=list)
+    technicianIds: List[str] = Field(default_factory=list)
+    assistantIds: List[str] = Field(default_factory=list)

@@ -51,31 +51,52 @@ const Dashboard: React.FC = () => {
     // Função que renderiza o modal correto com base na configuração atual em `modalConfig`.
     const renderModal = () => {
         if (!modalConfig) return null;
-
         // Um `switch` decide qual componente de modal renderizar.
         switch (modalConfig.type) {
             case 'OS_DETAIL':
-                return <OSDetailModal isOpen={true} onClose={handleCloseModal} os={modalConfig.data} setModalConfig={setModalConfig} />;
+            return <OSDetailModal isOpen={true} onClose={handleCloseModal} os={modalConfig.data} setModalConfig={setModalConfig} />;
+
             case 'OS_FORM':
-                return <OSForm isOpen={true} onClose={handleCloseModal} initialData={modalConfig.data} />;
+            return <OSForm isOpen={true} onClose={handleCloseModal} initialData={modalConfig.data} />;
+
             case 'MANAGE_USERS':
             case 'MANAGE_PLANTS':
-                return <ManagementModal isOpen={true} onClose={handleCloseModal} config={modalConfig} setModalConfig={setModalConfig} />;
+            // Encaminha a própria config para o ManagementModal, que orquestra lista e forms
+            return <ManagementModal isOpen={true} onClose={handleCloseModal} config={modalConfig} setModalConfig={setModalConfig} />;
+
             case 'USER_FORM': {
-                // Lógica para voltar ao modal de gerenciamento após fechar o formulário.
-                const parentConfigForUser = modalConfig.data?.parentConfig || null;
-                return <UserForm isOpen={true} onClose={() => setModalConfig(parentConfigForUser)} initialData={modalConfig.data?.user} role={modalConfig.data?.role} />;
+            // Permite voltar para a tela anterior (lista) ao fechar o form
+            const parentConfigForUser = modalConfig.data?.parentConfig || null;
+            return (
+                <UserForm
+                isOpen={true}
+                onClose={() => setModalConfig(parentConfigForUser)}
+                initialData={modalConfig.data?.user}
+                role={modalConfig.data?.role}
+                />
+            );
             }
+
             case 'PLANT_FORM': {
-                const parentConfigForPlant = modalConfig.data?.parentConfig || null;
-                return <PlantForm isOpen={true} onClose={() => setModalConfig(parentConfigForPlant)} initialData={modalConfig.data?.plant} />;
+            // IMPORTANTE: repassar presetClient, recebido quando o fluxo vem do PlantList
+            const parentConfigForPlant = modalConfig.data?.parentConfig || null;
+            return (
+                <PlantForm
+                isOpen={true}
+                onClose={() => setModalConfig(parentConfigForPlant)}
+                initialData={modalConfig.data?.plant}
+                presetClient={modalConfig.data?.presetClient} // ← adicionada
+                />
+            );
             }
+
             case 'DOWNLOAD_FILTER':
-                 return <DownloadModal isOpen={true} onClose={handleCloseModal} />;
+            return <DownloadModal isOpen={true} onClose={handleCloseModal} />;
+
             default:
-                return null;
+            return null;
         }
-    };
+        };
 
     // Estrutura JSX do layout principal da aplicação.
     return (

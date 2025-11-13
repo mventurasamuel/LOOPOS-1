@@ -1,6 +1,7 @@
 // File: contexts/DataContext.tsx
 // Este é o "coração" da aplicação, atuando como um banco de dados em memória.
-// Ele gerencia todos os dados (usuários, usinas, OSs), fornece funções para manipulá-los e usa o localStorage para persistência.
+// Ele gerencia todos os dados (usuários, usinas, OSs), fornece funções para manipulá-los
+// e usa o localStorage para persistência (via hook useLocalStorage abaixo).
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { OS, User, Plant, Notification, OSLog, ImageAttachment, Role } from '../types';
@@ -8,24 +9,29 @@ import { DEFAULT_PLANT_ASSETS } from '../constants';
 
 // --- DADOS DE EXEMPLO (MOCK DATA) ---
 // Estes dados são usados para popular a aplicação inicialmente, facilitando o desenvolvimento e testes.
+// Observação: você pode acrescentar usuários COORDINATOR/ASSISTANT aqui se desejar testá-los.
 const initialUsers: User[] = [
-    { id: 'user-1', name: 'Admin User', email: 'admin@admin.com', password: 'admin', phone: '111', role: Role.ADMIN },
-    { id: 'user-2', name: 'Maria Oliveira', email: 'maria@supervisor.com', password: '123', phone: '222', role: Role.SUPERVISOR, plantIds: ['plant-1', 'plant-2'] },
-    { id: 'user-3', name: 'Carlos Souza', email: 'carlos@technician.com', password: '123', phone: '333', role: Role.TECHNICIAN, plantIds: ['plant-1'], supervisorId: 'user-2' },
-    { id: 'user-4', name: 'João Pereira', email: 'joao@technician.com', password: '123', phone: '444', role: Role.TECHNICIAN, plantIds: ['plant-2'], supervisorId: 'user-2' },
-    { id: 'user-5', name: 'Ana Costa', email: 'ana@supervisor.com', password: '123', phone: '555', role: Role.SUPERVISOR, plantIds: ['plant-3'] },
-    { id: 'user-6', name: 'Pedro Lima', email: 'pedro@technician.com', password: '123', phone: '667', role: Role.TECHNICIAN, plantIds: ['plant-3'], supervisorId: 'user-5' },
-    { id: 'user-7', name: 'Luiza Fernandes', email: 'luiza@operator.com', password: '123', phone: '777', role: Role.OPERATOR },
+  { id: 'user-1', name: 'Admin User', email: 'admin@admin.com', password: 'admin', phone: '111', role: Role.ADMIN },
+  { id: 'user-2', name: 'Maria Oliveira', email: 'maria@supervisor.com', password: '123', phone: '222', role: Role.SUPERVISOR, plantIds: ['plant-1', 'plant-2'] },
+  { id: 'user-3', name: 'Carlos Souza', email: 'carlos@technician.com', password: '123', phone: '333', role: Role.TECHNICIAN, plantIds: ['plant-1'], supervisorId: 'user-2' },
+  { id: 'user-4', name: 'João Pereira', email: 'joao@technician.com', password: '123', phone: '444', role: Role.TECHNICIAN, plantIds: ['plant-2'], supervisorId: 'user-2' },
+  { id: 'user-5', name: 'Ana Costa', email: 'ana@supervisor.com', password: '123', phone: '555', role: Role.SUPERVISOR, plantIds: ['plant-3'] },
+  { id: 'user-6', name: 'Pedro Lima', email: 'pedro@technician.com', password: '123', phone: '667', role: Role.TECHNICIAN, plantIds: ['plant-3'], supervisorId: 'user-5' },
+  { id: 'user-7', name: 'Luiza Fernandes', email: 'luiza@operator.com', password: '123', phone: '777', role: Role.OPERATOR },
 ];
 
 const initialPlants: Plant[] = [
-    { id: 'plant-1', client: 'Cliente A', name: 'UFV Solar I', subPlants: [{ id: 1, inverterCount: 10 }], stringCount: 100, trackerCount: 50, assets: DEFAULT_PLANT_ASSETS },
-    { id: 'plant-2', client: 'Cliente B', name: 'UFV Solar II', subPlants: [{ id: 1, inverterCount: 15 }], stringCount: 150, trackerCount: 75, assets: DEFAULT_PLANT_ASSETS.slice(0, 10) },
-    { id: 'plant-3', client: 'Cliente C', name: 'UFV Solar III', subPlants: [{ id: 1, inverterCount: 20 }], stringCount: 200, trackerCount: 100, assets: DEFAULT_PLANT_ASSETS },
+  { id: 'plant-1', client: 'Cliente A', name: 'UFV Solar I',  subPlants: [{ id: 1, inverterCount: 10 }], stringCount: 100, trackerCount: 50,  assets: DEFAULT_PLANT_ASSETS },
+  { id: 'plant-2', client: 'Cliente B', name: 'UFV Solar II', subPlants: [{ id: 1, inverterCount: 15 }], stringCount: 150, trackerCount: 75,  assets: DEFAULT_PLANT_ASSETS.slice(0, 10) },
+  { id: 'plant-3', client: 'Cliente C', name: 'UFV Solar III',subPlants: [{ id: 1, inverterCount: 20 }], stringCount: 200, trackerCount: 100, assets: DEFAULT_PLANT_ASSETS },
 ];
 
-
-
+interface AssignmentsDTO {
+  coordinatorId: string | null;
+  supervisorIds: string[];
+  technicianIds: string[];
+  assistantIds: string[];
+}
 
 // Inicia sem Ordens de Serviço, para que o usuário possa criar as suas.
 const initialOS: OS[] = [];
@@ -38,10 +44,10 @@ interface DataContextType {
   plants: Plant[];
   osList: OS[];
   notifications: Notification[];
-  addUser: (user: Omit<User, 'id'>) => void;
-  updateUser: (user: User) => void;
-  addPlant: (plant: Omit<Plant, 'id'>) => void;
-  updatePlant: (plant: Plant, techIds: string[], supIds: string[]) => void;
+  addUser: (user: Omit<User, 'id'>) => Promise<User>;
+  updateUser: (user: User) => Promise<User>;
+  addPlant: (plant: Omit<Plant, 'id'>, assignments?: AssignmentsDTO) => Promise<Plant>;
+  updatePlant: (plant: Plant, assignments?: AssignmentsDTO) => Promise<void>;
   addOS: (osData: Omit<OS, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'logs' | 'imageAttachments'>) => Promise<void>;
   updateOS: (os: OS) => Promise<void>;
   addOSLog: (osId: string, log: Omit<OSLog, 'id' | 'timestamp'>) => void;
@@ -51,239 +57,223 @@ interface DataContextType {
   filterOSForUser: (u: User) => OS[];
 }
 
-
 // Cria o contexto.
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 /**
  * Hook customizado para abstrair a lógica de ler e salvar dados no localStorage.
- * @param key A chave usada no localStorage.
- * @param initialValue O valor inicial a ser usado se não houver nada no localStorage.
+ * @param key Chave usada no localStorage.
+ * @param initialValue Valor inicial se não houver nada salvo.
  */
+// Persistência de cache local (mesmo hook que você já tinha)
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
-    // Usa o useState para obter o valor inicial do localStorage ou o valor padrão.
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(error);
-            return initialValue;
-        }
-    });
-
-    // Cria uma versão de `setValue` que também persiste o novo valor no localStorage.
-    const setValue = (value: T | ((val: T) => T)) => {
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            window.localStorage.setItem(key, JSON.stringify(valueToStore));
-        } catch (error) {
-            console.error(error);
-        }
-    };
-    return [storedValue, setValue];
+  const [storedValue, setStoredValue] = useState<T>(() => {
+    try { const item = window.localStorage.getItem(key); return item ? JSON.parse(item) : initialValue; }
+    catch { return initialValue; }
+  });
+  const setValue = (value: T | ((val: T) => T)) => {
+    try { const next = value instanceof Function ? value(storedValue) : value;
+      setStoredValue(next); window.localStorage.setItem(key, JSON.stringify(next)); } catch {}
+  };
+  return [storedValue, setValue];
 };
 
 /**
  * DataProvider é o componente que gerencia e fornece todos os dados da aplicação.
+ * Ele persiste os dados no localStorage por "tabela" (users, plants, osList, notifications).
  */
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    // Usa o hook `useLocalStorage` para cada "tabela" de dados, garantindo a persistência.
-    const [users, setUsers] = useLocalStorage<User[]>('users', initialUsers);
-    const [plants, setPlants] = useLocalStorage<Plant[]>('plants', initialPlants);
-    const [osList, setOsList] = useLocalStorage<OS[]>('osList', initialOS);
-    const [notifications, setNotifications] = useLocalStorage<Notification[]>('notifications', initialNotifications);
+  // Estados com cache local
+  const [users, setUsers] = useLocalStorage<User[]>('users', []);
+  const [plants, setPlants] = useLocalStorage<Plant[]>('plants', []);
+  const [osList, setOsList] = useLocalStorage<OS[]>('osList', []);
+  const [notifications, setNotifications] = useLocalStorage<Notification[]>('notifications', []);
 
-    // 1) Bootstrap: carrega OS do backend ao iniciar
-    React.useEffect(() => {
-        (async () => {
-        try {
-            const res = await fetch('/api/os');
-            if (!res.ok) return;
-            const data: OS[] = await res.json();
-            setOsList(data);
-        } catch {
-            // mantém localStorage se o backend não estiver disponível
-        }
-        })();
-    }, []);
-    
-    const filterOSForUser = (u: User): OS[] => {
-        if (u.role === Role.TECHNICIAN) {
-            return osList.filter(os => os.technicianId === u.id);
-        }
-        if (u.role === Role.SUPERVISOR) {
-            const techIds = users.filter(x => x.role === Role.TECHNICIAN && x.supervisorId === u.id).map(x => x.id);
-            return osList.filter(os => techIds.includes(os.technicianId));
-        }
-        // ADMIN/OPERATOR veem todas (ajuste conforme política)
-        return osList;
-    };
+  // Bootstrap único: carrega users, plants e OS da API; se falhar, mantém cache local
+  const didBootstrapRef = React.useRef(false);
+  React.useEffect(() => {
+    if (didBootstrapRef.current) return;
+    didBootstrapRef.current = true;
+    (async () => {
+      try {
+        const [u, p, o] = await Promise.all([
+          fetch('/api/users').then(r => r.ok ? r.json() : users),
+          fetch('/api/plants').then(r => r.ok ? r.json() : plants),
+          fetch('/api/os').then(r => r.ok ? r.json() : osList),
+        ]);
+        setUsers(u); setPlants(p); setOsList(o);
+      } catch {
+        // Sem backend: segue com cache local
+      }
+    })();
+  }, []);
 
-    // Função auxiliar para criar notificações.
-    const createNotification = (userId: string, message: string) => {
-        const newNotif: Notification = {
-            id: `notif-${Date.now()}`, userId, message, read: false, timestamp: new Date().toISOString()
-        };
-        setNotifications(prev => [newNotif, ...prev]);
+  // Helpers
+  const createNotification = (userId: string, message: string) => {
+    const n: Notification = { id: `notif-${Date.now()}`, userId, message, read: false, timestamp: new Date().toISOString() };
+    setNotifications(prev => [n, ...prev]);
+  };
+
+  const filterOSForUser = (u: User): OS[] => {
+    if (u.role === Role.TECHNICIAN) return osList.filter(os => os.technicianId === u.id);
+    if (u.role === Role.SUPERVISOR) {
+      const techIds = users.filter(x => x.role === Role.TECHNICIAN && x.supervisorId === u.id).map(x => x.id);
+      return osList.filter(os => techIds.includes(os.technicianId));
     }
+    return osList;
+  };
 
-    // Adiciona um novo usuário.
-    const addUser = (user: Omit<User, 'id'>) => {
-        const newUser: User = { ...user, id: `user-${Date.now()}` };
-        setUsers(prev => [...prev, newUser]);
-    };
-
-    // Atualiza um usuário existente.
-    const updateUser = (updatedUser: User) => {
-        setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    };
-    
-    // Adiciona uma nova usina.
-    const addPlant = (plant: Omit<Plant, 'id'>) => {
-        const newPlant: Plant = { ...plant, id: `plant-${Date.now()}` };
-        setPlants(prev => [...prev, newPlant]);
+  // --- Users via API (com fallback otimista) ---
+  const addUser = async (user: Omit<User, 'id'>): Promise<User> => {
+    try {
+      const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(user) });
+      if (!res.ok) throw new Error();
+      const saved: User = await res.json();
+      setUsers(prev => [...prev, saved]);
+      return saved;
+    } catch {
+      const local: User = { ...user, id: `user-${Date.now()}` };
+      setUsers(prev => [...prev, local]); // fallback
+      return local;
     }
-    
-    // Atualiza uma usina e sincroniza as associações de técnicos e supervisores.
-    const updatePlant = (updatedPlant: Plant, techIds: string[], supIds: string[]) => {
-        setPlants(prev => prev.map(p => p.id === updatedPlant.id ? updatedPlant : p));
-        // Lógica de sincronização: percorre todos os usuários e atualiza seus `plantIds`.
-        setUsers(prevUsers => prevUsers.map(user => {
-            if (user.role === Role.TECHNICIAN || user.role === Role.SUPERVISOR) {
-                 const isAssigned = (user.role === Role.TECHNICIAN && techIds.includes(user.id)) || (user.role === Role.SUPERVISOR && supIds.includes(user.id));
-                 const plantIds = user.plantIds || [];
-                 const isCurrentlyAssigned = plantIds.includes(updatedPlant.id);
+  };
 
-                 if (isAssigned && !isCurrentlyAssigned) {
-                     return { ...user, plantIds: [...plantIds, updatedPlant.id] };
-                 }
-                 if (!isAssigned && isCurrentlyAssigned) {
-                     return { ...user, plantIds: plantIds.filter(id => id !== updatedPlant.id) };
-                 }
-            }
-            return user;
-        }));
-    };
+  const updateUser = async (user: User): Promise<User> => {
+    try {
+      const res = await fetch(`/api/users/${user.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(user) });
+      if (!res.ok) throw new Error();
+      const saved: User = await res.json();
+      setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
+      return saved;
+    } catch {
+      setUsers(prev => prev.map(u => u.id === user.id ? user : u)); // fallback
+      return user;
+    }
+  };
 
-    // Adiciona uma nova Ordem de Serviço.
-    const addOS = async (
-        osData: Omit<OS, 'id' | 'title' | 'createdAt' | 'updatedAt' | 'logs' | 'imageAttachments'>
-        ): Promise<void> => {
-        const now = new Date().toISOString();
-        // Gera um ID sequencial (ex: OS0001, OS0002).
-        const nextIdNumber =
-            (osList.length > 0 ? Math.max(...osList.map(os => parseInt(os.id.replace(/\D/g, ''), 10))) : 0) + 1;
-        const newId = `OS${String(nextIdNumber).padStart(4, '0')}`;
-        // Cria o título combinando o ID e a atividade.
-        const newTitle = `${newId} - ${osData.activity}`;
+  // --- Plants via API (com assignments separados) ---
+  const putAssignments = async (plantId: string, a: AssignmentsDTO) => {
+    try {
+      await fetch(`/api/plants/${plantId}/assignments`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(a)
+      });
+      // Atualiza links reversos no estado (opcional; backend já persiste em users.json)
+      setUsers(prev => prev.map(u => {
+        const list = new Set(u.plantIds || []);
+        const inAssign = u.id === a.coordinatorId || a.supervisorIds.includes(u.id) || a.technicianIds.includes(u.id) || a.assistantIds.includes(u.id);
+        if (inAssign) list.add(plantId); else list.delete(plantId);
+        return { ...u, plantIds: Array.from(list) };
+      }));
+    } catch {
+      // fallback silencioso; o usuário verá os dados ao recarregar quando backend voltar
+    }
+  };
 
-        const newOS: OS = {
-            ...osData,
-            id: newId,
-            title: newTitle,
-            createdAt: now,
-            updatedAt: now,
-            logs: [],
-            imageAttachments: []
-        };
-        try {
-            const res = await fetch('/api/os', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newOS)
-            });
-            if (!res.ok) throw new Error();
-            const saved: OS = await res.json();
-            setOsList(prev => [saved, ...prev]);
-        } catch {
-            // fallback local se backend estiver indisponível
-            setOsList(prev => [newOS, ...prev]);
-        }
+  const addPlant = async (plant: Omit<Plant, 'id'>, assignments?: AssignmentsDTO): Promise<Plant> => {
+    try {
+      const res = await fetch('/api/plants', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plant) });
+      if (!res.ok) throw new Error();
+      const saved: Plant = await res.json();
+      setPlants(prev => [...prev, saved]);
+      if (assignments) await putAssignments(saved.id, {
+        coordinatorId: assignments.coordinatorId ?? null,
+        supervisorIds: assignments.supervisorIds || [],
+        technicianIds: assignments.technicianIds || [],
+        assistantIds: assignments.assistantIds || [],
+      });
+      return saved;
+    } catch {
+      const local: Plant = { ...plant, id: `plant-${Date.now()}` };
+      setPlants(prev => [...prev, local]); // fallback
+      return local;
+    }
+  };
 
-        // Cria notificações para o supervisor e técnico.
-        const supervisor = users.find(u => u.id === osData.supervisorId);
-        if (supervisor) {
-            createNotification(supervisor.id, `Nova OS "${newTitle}" criada.`);
-        }
-        if (osData.technicianId) {
-            createNotification(osData.technicianId, `Você foi atribuído à nova OS "${newTitle}".`);
-        }
-    };
+  const updatePlant = async (plant: Plant, assignments?: AssignmentsDTO): Promise<void> => {
+    try {
+      const res = await fetch(`/api/plants/${plant.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plant) });
+      if (!res.ok) throw new Error();
+      const saved: Plant = await res.json();
+      setPlants(prev => prev.map(p => p.id === saved.id ? saved : p));
+      if (assignments) await putAssignments(saved.id, {
+        coordinatorId: assignments.coordinatorId ?? null,
+        supervisorIds: assignments.supervisorIds || [],
+        technicianIds: assignments.technicianIds || [],
+        assistantIds: assignments.assistantIds || [],
+      });
+    } catch {
+      setPlants(prev => prev.map(p => p.id === plant.id ? plant : p)); // fallback
+    }
+  };
 
-    // Atualiza uma OS existente.
-    const updateOS = async (updatedOS: OS) => {
-        const finalOS = { ...updatedOS, title: `${updatedOS.id} - ${updatedOS.activity}`, updatedAt: new Date().toISOString() };
-        try {
-            const res = await fetch(`/api/os/${finalOS.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(finalOS) });
-            if (!res.ok) throw new Error();
-            const saved: OS = await res.json();
-            setOsList(prev => prev.map(os => os.id === saved.id ? saved : os));
-            } catch {
-            setOsList(prev => prev.map(os => os.id === finalOS.id ? finalOS : os)); // fallback local
-            }
-        };
-    
-    // Adiciona um novo log (comentário/atividade) a uma OS.
-    const addOSLog = (osId: string, logData: Omit<OSLog, 'id' | 'timestamp'>) => {
-        const newLog: OSLog = { ...logData, id: `log-${Date.now()}`, timestamp: new Date().toISOString() };
-        setOsList(prev => prev.map(os => os.id === osId ? { ...os, logs: [newLog, ...os.logs] } : os));
-        
-        // Cria notificações sobre o novo comentário.
-        const os = osList.find(o => o.id === osId);
-        if (os) {
-            const author = users.find(u => u.id === logData.authorId);
-            const message = `${author?.name || 'Usuário'} adicionou um comentário à OS "${os.title}".`;
-            createNotification(os.supervisorId, message);
-            if (logData.statusChange) {
-                 const statusMessage = `O status da OS "${os.title}" foi alterado para ${logData.statusChange.to}.`;
-                 createNotification(os.supervisorId, statusMessage);
-            }
-        }
-    };
+  // --- OS (seu código atual; mantém fallback local) ---
+  const addOS = async (osData: Omit<OS, 'id'| 'title'| 'createdAt'| 'updatedAt'| 'logs'| 'imageAttachments'>): Promise<void> => {
+    const now = new Date().toISOString();
+    const nextIdNumber = (osList.length > 0 ? Math.max(...osList.map(os => parseInt(os.id.replace(/\D/g, ''), 10))) : 0) + 1;
+    const newId = `OS${String(nextIdNumber).padStart(4, '0')}`;
+    const newTitle = `${newId} - ${osData.activity}`;
+    const payload: OS = { ...osData, id: newId, title: newTitle, createdAt: now, updatedAt: now, logs: [], imageAttachments: [] };
+    try {
+      const res = await fetch('/api/os', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error();
+      const saved: OS = await res.json();
+      setOsList(prev => [saved, ...prev]);
+    } catch {
+      setOsList(prev => [payload, ...prev]); // fallback
+    }
+    if (osData.supervisorId) createNotification(osData.supervisorId, `Nova OS "${newTitle}" criada.`);
+    if (osData.technicianId) createNotification(osData.technicianId, `Você foi atribuído à nova OS "${newTitle}".`);
+  };
 
-    // Adiciona um anexo de imagem a uma OS.
-    const addOSAttachment = (osId: string, attachmentData: Omit<ImageAttachment, 'id' | 'uploadedAt'>) => {
-        const newAttachment: ImageAttachment = { ...attachmentData, id: `img-${Date.now()}`, uploadedAt: new Date().toISOString() };
-        setOsList(prev => prev.map(os => os.id === osId ? { ...os, imageAttachments: [newAttachment, ...os.imageAttachments] } : os));
-    };
-    
-    // Deleta um anexo de imagem de uma OS.
-    const deleteOSAttachment = (osId: string, attachmentId: string) => {
-        setOsList(prev => prev.map(os => {
-            if (os.id === osId) {
-                return { ...os, imageAttachments: os.imageAttachments.filter(att => att.id !== attachmentId) };
-            }
-            return os;
-        }));
-    };
-    
-    // Marca uma notificação como lida.
-    const markNotificationAsRead = (notificationId: string) => {
-        setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, read: true } : n));
-    };
+  const updateOS = async (updatedOS: OS) => {
+    const finalOS = { ...updatedOS, title: `${updatedOS.id} - ${updatedOS.activity}`, updatedAt: new Date().toISOString() };
+    try {
+      const res = await fetch(`/api/os/${finalOS.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(finalOS) });
+      if (!res.ok) throw new Error();
+      const saved: OS = await res.json();
+      setOsList(prev => prev.map(os => os.id === saved.id ? saved : os));
+    } catch {
+      setOsList(prev => prev.map(os => os.id === finalOS.id ? finalOS : os));
+    }
+  };
 
-    // Fornece todos os estados e funções para os componentes filhos.
-    return (
-        <DataContext.Provider value={{
-            users, plants, osList, notifications,
-            addUser, updateUser, addPlant, updatePlant,
-            addOS, updateOS, addOSLog, addOSAttachment, deleteOSAttachment,
-            filterOSForUser, markNotificationAsRead,
-        }}>
-            {children}
-        </DataContext.Provider>
-    );
+  const addOSLog = (osId: string, log: Omit<OSLog, 'id' | 'timestamp'>) => {
+    const newLog: OSLog = { ...log, id: `log-${Date.now()}`, timestamp: new Date().toISOString() };
+    setOsList(prev => prev.map(os => os.id === osId ? { ...os, logs: [newLog, ...os.logs] } : os));
+    const os = osList.find(o => o.id === osId);
+    if (os) {
+      const author = users.find(u => u.id === log.authorId);
+      const msg = `${author?.name || 'Usuário'} adicionou um comentário à OS "${os.title}".`;
+      createNotification(os.supervisorId, msg);
+      if (log.statusChange) createNotification(os.supervisorId, `O status da OS "${os.title}" foi alterado para ${log.statusChange.to}.`);
+    }
+  };
+
+  const addOSAttachment = (osId: string, att: Omit<ImageAttachment, 'id' | 'uploadedAt'>) => {
+    const newAtt: ImageAttachment = { ...att, id: `img-${Date.now()}`, uploadedAt: new Date().toISOString() };
+    setOsList(prev => prev.map(os => os.id === osId ? { ...os, imageAttachments: [newAtt, ...os.imageAttachments] } : os));
+  };
+
+  const deleteOSAttachment = (osId: string, attId: string) => {
+    setOsList(prev => prev.map(os => os.id === osId ? { ...os, imageAttachments: os.imageAttachments.filter(a => a.id !== attId) } : os));
+  };
+
+  const markNotificationAsRead = (id: string) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+
+  return (
+    <DataContext.Provider value={{
+      users, plants, osList, notifications,
+      addUser, updateUser, addPlant, updatePlant,
+      addOS, updateOS, addOSLog, addOSAttachment, deleteOSAttachment,
+      filterOSForUser, markNotificationAsRead,
+    }}>
+      {children}
+    </DataContext.Provider>
+  );
 };
 
-/**
- * Hook customizado `useData` para simplificar o acesso ao DataContext.
- */
 export const useData = (): DataContextType => {
-    const context = useContext(DataContext);
-    if (!context) {
-        throw new Error('useData must be used within a DataProvider');
-    }
-    return context;
+  const ctx = useContext(DataContext);
+  if (!ctx) throw new Error('useData must be used within a DataProvider');
+  return ctx;
 };

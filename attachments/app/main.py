@@ -1,29 +1,38 @@
-# /attachments/main.py
+# /attachments/app/main.py
+# App FastAPI principal — adiciona rotas de usuários e usinas.
+# Mantém suas rotas existentes (OS, anexos etc) e inclui os novos routers.
+
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import List
 from pathlib import Path
 from datetime import datetime
-import os, uuid
+import os
+import uuid
 
-# importe o router após criar app
-app = FastAPI()
+# Routers do pacote (ajuste conforme sua estrutura: app/routes/*.py)
+from app.routes.users import router as users_router
+from app.routes.plants import router as plants_router
 
+# Cria o app
+app = FastAPI(title="LoopOS Attachments API", version="1.0.0")
+
+# CORS amplo para desenvolvimento (restrinja em produção)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://192.168.18.69:3000"
-    ],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Inclui as rotas de OS (CRUD)
-from os_api import router as os_router  # os_api.py na mesma pasta
+# Rotas de OS (mantém seu módulo existente na raiz de /attachments)
+from os_api import router as os_router  # os_api.py na raiz de /attachments
 app.include_router(os_router)
+
+# Novas rotas
+app.include_router(users_router)
+app.include_router(plants_router)
 
 # Arquivos estáticos (anexos)
 UPLOAD_ROOT = Path(os.getenv(
@@ -33,6 +42,13 @@ UPLOAD_ROOT = Path(os.getenv(
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 app.mount("/files", StaticFiles(directory=UPLOAD_ROOT), name="files")
 
+
+@app.get("/api/health")
+def health():
+    return {"ok": True}
+
+
+# Upload de anexos (gravando em /files/{os_id}/<arquivo>)
 @app.post("/api/os/{os_id}/attachments")
 async def upload_attachments(
     os_id: str,
@@ -42,17 +58,20 @@ async def upload_attachments(
     dest = UPLOAD_ROOT / os_id
     dest.mkdir(parents=True, exist_ok=True)
     saved = []
+
     for i, uf in enumerate(files):
         ext = Path(uf.filename).suffix or ".bin"
         att_id = f"img-{uuid.uuid4().hex}"
         fname = f"{att_id}{ext}"
         fpath = dest / fname
+
         with open(fpath, "wb") as out:
             while True:
                 chunk = await uf.read(1024 * 1024)
                 if not chunk:
                     break
                 out.write(chunk)
+
         caption = captions[i] if i < len(captions) else ""
         saved.append({
             "id": att_id,
@@ -60,14 +79,18 @@ async def upload_attachments(
             "caption": caption,
             "uploadedAt": datetime.utcnow().isoformat() + "Z",
         })
+
     return saved
 
+
+# Remoção de anexo por ID (apaga qualquer extensão)
 @app.delete("/api/os/{os_id}/attachments/{att_id}")
 def delete_attachment(os_id: str, att_id: str):
     dirp = UPLOAD_ROOT / os_id
-    for p in dirp.glob(f"{att_id}.*"):
-        try:
-            p.unlink()
-        except:
-            pass
+    if dirp.exists():
+        for p in dirp.glob(f"{att_id}.*"):
+            try:
+                p.unlink()
+            except:
+                pass
     return {"ok": True}

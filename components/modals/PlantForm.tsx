@@ -1,8 +1,10 @@
 // File: components/modals/PlantForm.tsx
-// Este componente renderiza um formulário modal para criar ou editar usinas.
-// Ajustado para refletir o modelo: quantidade fixa de Subusinas por Usina.
-// Na criação: o usuário informa N e o formulário gera Subusina 1..N.
-// Na edição: a quantidade é fixa (não editável); apenas os campos das subusinas existentes são alterados.
+// Formulário modal para criar/editar usinas.
+// Regras:
+// - Criação: o usuário informa N subusinas, o formulário gera Subusina 1..N (inverterCount=0).
+// - Edição: quantidade de subusinas é fixa; apenas atualiza campos existentes.
+// - Novo: se vier com presetClient, o campo "Cliente" é pré-preenchido.
+// - Atribuições: permite escolher Coordenador (único), Supervisores/Técnicos/Auxiliares (múltiplos).
 
 import React, { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
@@ -10,7 +12,7 @@ import { Plant, Role } from '../../types';
 import Modal from './Modal';
 import { DEFAULT_PLANT_ASSETS } from '../../constants';
 
-// Componentes auxiliares movidos para o escopo do módulo para evitar remounts e perda de foco.
+// Campo com rótulo
 const FormField: React.FC<{label: string, children: React.ReactNode, className?: string}> = ({label, children, className}) => (
   <div className={className}>
     <label className="block text-sm font-medium text-gray-200 mb-1">{label}</label>
@@ -18,12 +20,13 @@ const FormField: React.FC<{label: string, children: React.ReactNode, className?:
   </div>
 );
 
-const UserAssignmentField: React.FC<{
-  title: string,
-  users: Array<{ id: string; name: string }>,
-  selected: string[],
-  onChange: (id: string) => void
-}> = ({ title, users, selected, onChange }) => (
+// Lista de seleção múltipla (checkboxes) para atribuições
+const MultiAssignField: React.FC<{
+  title: string;
+  users: Array<{ id: string; name: string }>;
+  selected: string[];
+  onToggle: (id: string) => void;
+}> = ({ title, users, selected, onToggle }) => (
   <FormField label={title}>
     <div className="grid grid-cols-2 gap-2 p-2 border dark:border-gray-600 rounded-md max-h-32 overflow-y-auto">
       {users.map(user => (
@@ -31,7 +34,7 @@ const UserAssignmentField: React.FC<{
           <input
             type="checkbox"
             checked={selected.includes(user.id)}
-            onChange={() => onChange(user.id)}
+            onChange={() => onToggle(user.id)}
             className="rounded"
           />
           <span>{user.name}</span>
@@ -44,10 +47,11 @@ const UserAssignmentField: React.FC<{
 interface PlantFormProps {
   isOpen: boolean;
   onClose: () => void;
-  initialData?: Plant; // Se presente, estamos editando; caso contrário, criando.
+  initialData?: Plant;      // Edição quando presente
+  presetClient?: string;    // Cliente pré-selecionado quando criação parte de um cliente
 }
 
-// Tipo para o estado interno do formulário de usina
+// Estado do formulário (campos da usina)
 type PlantFormData = {
   client: string;
   name: string;
@@ -57,42 +61,44 @@ type PlantFormData = {
   assets: string[];
 };
 
-const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) => {
-  // Acessa os dados e funções do DataContext.
+const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, presetClient }) => {
   const { users, addPlant, updatePlant } = useData();
 
-  // Filtra usuários por função
-  const allTechnicians = users.filter(u => u.role === Role.TECHNICIAN);
+  // Coleções por função (Coordenador e Auxiliar são novos papéis; ver patch no types/DataContext)
+  const allCoordinators = users.filter(u => u.role === Role.COORDINATOR);
   const allSupervisors = users.filter(u => u.role === Role.SUPERVISOR);
+  const allTechnicians = users.filter(u => u.role === Role.TECHNICIAN);
+  const allAssistants  = users.filter(u => u.role === Role.ASSISTANT);
 
   const isEditing = !!initialData;
 
-  // Título estável para esta abertura do modal (evita mudanças durante a digitação)
+  // Título estável para evitar "flicker" ao digitar
   const stableTitleRef = React.useRef(
     isEditing ? `Editar Usina ${initialData?.name ?? ''}` : 'Nova Usina'
   );
 
-  // Quantidade de subusinas (N). Na criação o usuário informa; na edição é fixa (derivada do dado).
+  // Quantidade de subusinas (N). Em edição é fixo, em criação gera Subusina 1..N.
   const [qtdSubunidades, setQtdSubunidades] = useState<number>(
     isEditing ? (initialData?.subPlants?.length ?? 1) : 1
   );
 
-  // Função para obter estado inicial
+  // Estado inicial:
+  // - Em edição: clona os campos da usina existente.
+  // - Em criação: usa presetClient (se vier) para pré-preencher "Cliente".
   const getInitialState = (): PlantFormData => {
     if (initialData) {
       return {
         client: initialData.client,
         name: initialData.name,
-        subPlants: [...initialData.subPlants], // já vem com a quantidade fixa
+        subPlants: [...initialData.subPlants],
         stringCount: initialData.stringCount,
         trackerCount: initialData.trackerCount,
         assets: [...initialData.assets],
       };
     }
-    // Criação: começamos com N subusinas (N = qtdSubunidades), numeradas 1..N, e inverterCount = 0.
-    // OBS: o efeito abaixo mantém formData.subPlants sincronizado quando qtdSubunidades muda.
+    // CRIAÇÃO: preset do cliente e subusinas geradas 1..N
     return {
-      client: '',
+      client: presetClient ?? '', // ← ponto-chave para o prefill do cliente
       name: '',
       subPlants: Array.from({ length: Math.max(1, qtdSubunidades) }, (_, i) => ({
         id: i + 1,
@@ -104,36 +110,38 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
     };
   };
 
-  // Estado principal do formulário
+  // Estado principal do form
   const [formData, setFormData] = useState<PlantFormData>(getInitialState());
 
-  // Estados para as associações de usuários (apenas no modo de edição).
-  const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([]);
+  // Atribuições (sempre visíveis: criação e edição)
+  const [assignedCoordinator, setAssignedCoordinator] = useState<string | null>(null);
   const [assignedSupervisors, setAssignedSupervisors] = useState<string[]>([]);
+  const [assignedTechnicians, setAssignedTechnicians] = useState<string[]>([]);
+  const [assignedAssistants, setAssignedAssistants] = useState<string[]>([]);
 
-  // Reset do formulário sempre que o modal abre
+  // Reset sempre que o modal abre OU quando presetClient muda (abrir "Nova Usina" em outro cliente)
   useEffect(() => {
-    if (isOpen) {
-      setFormData(getInitialState());
+    if (!isOpen) return;
+    setFormData(getInitialState());
 
-      if (initialData) {
-        // Se for edição, preenche usuários associados (usando plantIds)
-        setAssignedTechnicians(
-          allTechnicians.filter(u => u.plantIds?.includes(initialData.id)).map(u => u.id)
-        );
-        setAssignedSupervisors(
-          allSupervisors.filter(u => u.plantIds?.includes(initialData.id)).map(u => u.id)
-        );
-      } else {
-        setAssignedTechnicians([]);
-        setAssignedSupervisors([]);
-      }
+    if (initialData) {
+      const pid = initialData.id;
+      // Em edição, tenta reconstruir atribuições a partir de plantIds dos usuários
+      setAssignedCoordinator(allCoordinators.find(u => u.plantIds?.includes(pid))?.id ?? null);
+      setAssignedSupervisors(allSupervisors.filter(u => u.plantIds?.includes(pid)).map(u => u.id));
+      setAssignedTechnicians(allTechnicians.filter(u => u.plantIds?.includes(pid)).map(u => u.id));
+      setAssignedAssistants(allAssistants.filter(u => u.plantIds?.includes(pid)).map(u => u.id));
+    } else {
+      // Em criação, inicia vazio (ou com defaults)
+      setAssignedCoordinator(null);
+      setAssignedSupervisors([]);
+      setAssignedTechnicians([]);
+      setAssignedAssistants([]);
     }
-    // Importante: não incluir `users` nas dependências para não provocar remounts e perda de foco.
-  }, [isOpen, initialData]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialData, presetClient]); // ← incluir presetClient garante prefill ao trocar de cliente
 
-  // Quando a quantidade de subusinas muda em CRIAÇÃO, sincronizamos o array subPlants
-  // preservando os inverterCount já digitados nas posições existentes.
+  // Em CRIAÇÃO, sincroniza o array subPlants quando N muda, preservando valores já digitados.
   useEffect(() => {
     if (!isEditing) {
       setFormData(prev => {
@@ -147,7 +155,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
     }
   }, [qtdSubunidades, isEditing]);
 
-  // Manipuladores de eventos para atualizar o estado do formulário.
+  // Handlers genéricos
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type } = e.target;
     setFormData(prev => ({
@@ -155,14 +163,6 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
       [name]: type === 'number' ? parseInt(value) || 0 : value
     }));
   };
-
-  const handleSubPlantChange = (index: number, value: number) => {
-    const newSubPlants = [...formData.subPlants];
-    newSubPlants[index].inverterCount = value;
-    setFormData(prev => ({ ...prev, subPlants: newSubPlants }));
-  };
-
-  // OBS: Botão "Adicionar Subusina" foi removido, pois a quantidade é fixa conforme a regra de negócio.
 
   const handleAssetToggle = (assetName: string) => {
     setFormData(prev => ({
@@ -173,28 +173,44 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
     }));
   };
 
-  const handleUserAssignmentChange = (userId: string, type: 'technician' | 'supervisor') => {
-    const setter = type === 'technician' ? setAssignedTechnicians : setAssignedSupervisors;
-    setter(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
+  const toggleInArray = (id: string, setter: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setter(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   };
 
-  // Submissão do formulário com a lógica de quantidade fixa de subusinas
+  // Submissão:
+  // - Se DataContext já suporta as novas assinaturas com assignments, passe o objeto completo.
+  // - Se ainda não, adapte para as funções antigas (ex.: updatePlant(plant, techIds, supIds)).
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (isEditing) {
-      // Edição: a quantidade de subusinas é fixa; apenas atualizamos os dados existentes
-      updatePlant({ ...initialData, ...formData }, assignedTechnicians, assignedSupervisors);
+    // Ajuste conforme sua assinatura atual no DataContext:
+    // Exemplo com nova assinatura (coordenador/supervisor/técnico/auxiliar):
+    const assignments = {
+      coordinatorId: assignedCoordinator,
+      supervisorIds: assignedSupervisors,
+      technicianIds: assignedTechnicians,
+      assistantIds: assignedAssistants
+    };
+
+    if (isEditing && initialData) {
+      // Edição
+      // Se sua função ainda for updatePlant(plant, techIds, supIds):
+      // updatePlant({ ...initialData, ...formData }, assignedTechnicians, assignedSupervisors);
+      // Senão (nova assinatura com assignments):
+      // @ts-ignore -> remova o ignore depois de atualizar a assinatura no DataContext
+      updatePlant({ ...initialData, ...formData }, assignments);
     } else {
-      // Criação: subPlants já foi gerado automaticamente a partir de `qtdSubunidades`
-      // (efeito acima garante que formData.subPlants tem tamanho N).
-      addPlant(formData);
+      // Criação
+      // addPlant(formData) // assinatura antiga
+      // Nova assinatura (retorna plant criado) com assignments:
+      // @ts-ignore -> remova o ignore depois de atualizar a assinatura no DataContext
+      addPlant(formData, assignments);
     }
 
     onClose();
   };
 
-  // Contraste e acessibilidade: classes utilitárias para inputs no tema escuro
+  // Utilitário de estilo
   const inputBase =
     "w-full px-3 py-2 rounded-md shadow-sm bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-400 " +
     "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500";
@@ -212,7 +228,6 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
           >
             Cancelar
           </button>
-          {/* Submit do form via atributo form para não perder foco */}
           <button
             type="submit"
             form="plant-form"
@@ -224,6 +239,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
       }
     >
       <form id="plant-form" onSubmit={handleSubmit} className="space-y-4">
+        {/* Cliente (pré-preenchido quando presetClient vem do PlantList) */}
         <FormField label="Cliente">
           <input
             type="text"
@@ -248,6 +264,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
           />
         </FormField>
 
+        {/* Métricas e quantidade de subusinas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <FormField label="Qtd. de Strings">
             <input
@@ -259,6 +276,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
               className={inputBase}
             />
           </FormField>
+
           <FormField label="Qtd. de Trackers">
             <input
               type="number"
@@ -269,6 +287,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
               className={inputBase}
             />
           </FormField>
+
           <FormField label="Qtd. de Subusinas">
             <input
               type="number"
@@ -286,43 +305,42 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData }) =
           </FormField>
         </div>
 
-        <FormField label="Subusinas">
-          <div className="space-y-2">
-            {formData.subPlants.map((sub, index) => (
-              <div key={sub.id} className="flex items-center space-x-3">
-                {/* Nota: a denominação visual (ex.: Bom Jesus 1..N) é aplicada na listagem/página de detalhes */}
-                <span className="font-semibold text-gray-200">Subusina {sub.id}:</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={sub.inverterCount}
-                  onChange={(e) => handleSubPlantChange(index, parseInt(e.target.value) || 0)}
-                  className={inputBase}
-                  placeholder="Qtd. Inversores"
-                />
-              </div>
-            ))}
-          </div>
-          {/* Botão de adicionar foi removido, conforme regra de contagem fixa */}
-        </FormField>
+        {/* Atribuições (Coordenador: único; demais: múltiplos) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t dark:border-gray-700">
+          <FormField label="Atribuir Coordenador">
+            <select
+              value={assignedCoordinator ?? ''}
+              onChange={(e) => setAssignedCoordinator(e.target.value || null)}
+              className={inputBase}
+            >
+              <option value="">— Nenhum —</option>
+              {allCoordinators.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </FormField>
 
-        {isEditing && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t dark:border-gray-700">
-            <UserAssignmentField
-              title="Técnicos Atribuídos"
-              users={allTechnicians}
-              selected={assignedTechnicians}
-              onChange={(id) => handleUserAssignmentChange(id, 'technician')}
-            />
-            <UserAssignmentField
-              title="Supervisores Atribuídos"
-              users={allSupervisors}
-              selected={assignedSupervisors}
-              onChange={(id) => handleUserAssignmentChange(id, 'supervisor')}
-            />
-          </div>
-        )}
+          <MultiAssignField
+            title="Atribuir Supervisor"
+            users={allSupervisors}
+            selected={assignedSupervisors}
+            onToggle={(id) => toggleInArray(id, setAssignedSupervisors)}
+          />
+          <MultiAssignField
+            title="Atribuir Técnico"
+            users={allTechnicians}
+            selected={assignedTechnicians}
+            onToggle={(id) => toggleInArray(id, setAssignedTechnicians)}
+          />
+          <MultiAssignField
+            title="Atribuir Auxiliar"
+            users={allAssistants}
+            selected={assignedAssistants}
+            onToggle={(id) => toggleInArray(id, setAssignedAssistants)}
+          />
+        </div>
 
+        {/* Ativos padrão (com "Selecionar Todos") */}
         <FormField label="Ativos Padrão">
           <div className="flex items-center justify-end">
             <label className="flex items-center space-x-2 text-sm cursor-pointer">
