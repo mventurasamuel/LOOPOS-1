@@ -140,39 +140,50 @@ const OSForm: React.FC<OSFormProps> = ({ isOpen, onClose, initialData }) => {
   };
 
   // Converte rascunhos para anexos definitivos (sem fallback para nome do arquivo).
-  const handleAddAttachments = () => {
-    if (newAttachmentsDraft.length === 0 || !user || !isEditing) return;
-    setIsUploading(true);
-    const filePromises = newAttachmentsDraft.map(draft => (
-      new Promise<ImageAttachment>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve({
-          id: `img-${Date.now()}-${Math.random()}`,
-          url: reader.result as string,
-          uploadedBy: user.id,
-          caption: draft.caption?.trim() ?? "", // manter vazio se o usuário não preencher
-          uploadedAt: new Date().toISOString()
-        });
-        reader.onerror = reject;
-        reader.readAsDataURL(draft.file);
-      })
-    ));
-    Promise.all(filePromises)
-      .then(newAttachments => {
-        setCurrentAttachments(prev => [...prev, ...newAttachments]);
-        setNewAttachmentsDraft([]);
-        setIsUploading(false);
-      })
-      .catch(error => {
-        console.error("Erro ao processar arquivos:", error);
-        setIsUploading(false);
-      });
-  };
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''; // ex.: http://127.0.0.1:8000
+const FILES_BASE = import.meta.env.VITE_FILES_BASE_URL ?? API_BASE; // ex.: http://127.0.0.1:8000
 
-  // ADICIONADO: remover anexo existente pelo id
-    const handleDeleteAttachment = (attachmentId: string) => {
-    setCurrentAttachments(prev => prev.filter(att => att.id !== attachmentId));
+const handleAddAttachments = async () => {
+  if (newAttachmentsDraft.length === 0 || !user || !isEditing || !initialData) return; // [web:148]
+  setIsUploading(true); // [web:148]
+  try {
+    const fd = new FormData();
+    newAttachmentsDraft.forEach(d => {
+      fd.append('files', d.file);
+      fd.append('captions', d.caption ?? '');
+    }); // [web:148]
+    const url = API_BASE ? `${API_BASE}/api/os/${initialData.id}/attachments` : `/api/os/${initialData.id}/attachments`; // [web:181]
+    const res = await fetch(url, { method: 'POST', body: fd }); // [web:148]
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Falha no upload (${res.status}): ${text}`); // [web:148]
+    }
+    const saved: ImageAttachment[] = await res.json(); // [{id,url,caption,uploadedAt}] [web:148]
+    // Se o backend retornar URL relativa (/files/...), prefixe com FILES_BASE.
+    const normalized = saved.map(a => ({
+      ...a,
+      url: a.url.startsWith('http') ? a.url : `${FILES_BASE}${a.url}`
+    })); // [web:148]
+    setCurrentAttachments(prev => [...prev, ...normalized]); // [web:148]
+    setNewAttachmentsDraft([]); // [web:148]
+  } catch (err) {
+    console.error('Upload error:', err);
+    alert('Não foi possível enviar as imagens. Verifique se o servidor está rodando e o proxy está configurado.'); // [web:175]
+  } finally {
+    setIsUploading(false); // garante sair do estado “Adicionando...”. [web:148]
+  }
+};
+
+
+
+
+    // Remoção (botão de lixeira)
+    const handleDeleteAttachment = async (attachmentId: string) => {
+        if (!isEditing || !initialData) return;
+        await fetch(`/api/os/${initialData.id}/attachments/${attachmentId}`, { method: "DELETE" });
+        setCurrentAttachments(prev => prev.filter(att => att.id !== attachmentId));
     };
+
 
 
   // Submete o formulário.

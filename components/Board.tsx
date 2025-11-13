@@ -9,6 +9,8 @@ import { OS, OSStatus } from '../types';
 import Column from './Column';
 // Importa constantes usadas para os títulos das colunas e a ordem dos status.
 import { STATUS_COLUMN_TITLES, OS_STATUSES } from '../constants';
+import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Define as propriedades que o componente Board espera receber do Dashboard.
 interface BoardProps {
@@ -18,7 +20,12 @@ interface BoardProps {
     onOpenDownloadFilter: () => void; // Função para abrir o modal de download.
 }
 
+
 const Board: React.FC<BoardProps> = ({ osList, onUpdateOS, onCardClick, onOpenDownloadFilter }) => {
+    const { filterOSForUser } = useData();
+    const { user } = useAuth();
+    // Lista efetivamente exibida de acordo com o papel do usuário
+    const visibleOS = user ? filterOSForUser(user) : osList;
 
     /**
      * Função chamada ao final de uma operação de arrastar e soltar.
@@ -30,10 +37,10 @@ const Board: React.FC<BoardProps> = ({ osList, onUpdateOS, onCardClick, onOpenDo
         // Se não houver destino (o item foi solto fora de uma coluna) ou se o item voltou para a mesma posição, não faz nada.
         if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) {
             return;
-        }
+            }
 
         // Encontra a OS que foi movida.
-        const osToMove = osList.find(os => os.id === draggableId);
+        const osToMove = visibleOS.find(os => os.id === draggableId);
         if (osToMove) {
             // Obtém o novo status a partir do ID da coluna de destino.
             const newStatus = destination.droppableId as OSStatus;
@@ -50,7 +57,7 @@ const Board: React.FC<BoardProps> = ({ osList, onUpdateOS, onCardClick, onOpenDo
                 {/* Mapeia a lista de status para criar uma coluna para cada um. */}
                 {OS_STATUSES.map(status => {
                     // Filtra a lista de OS para obter apenas as que pertencem a esta coluna (status).
-                    const osInColumn = osList.filter(os => os.status === status);
+                    const osInColumn = visibleOS.filter(os => os.status === status);
                     return (
                         <Column
                             key={status}
