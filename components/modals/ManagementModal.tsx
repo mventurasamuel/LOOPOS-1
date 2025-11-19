@@ -46,7 +46,7 @@ const ROLE_SINGULAR: Record<Role, string> = {
 };
 
 const ManagementModal: React.FC<ManagementModalProps> = ({ isOpen, onClose, config, setModalConfig }) => {
-  const { users, plants } = useData();
+  const { users, plants, deleteUser } = useData();
   const { user: currentUser } = useAuth();
 
   // --- ATOR (usuário logado) ---
@@ -54,6 +54,24 @@ const ManagementModal: React.FC<ManagementModalProps> = ({ isOpen, onClose, conf
     id: 'anon', name: '—', username: 'anon',
     role: Role.OPERATOR, plantIds: []
   } as unknown as User);
+
+  const handleDeleteUser = async (user: User) => {
+    if (actor.role !== Role.ADMIN) {
+      alert('Apenas admins podem deletar');
+      return;
+    }
+    
+    if (!window.confirm(`Deletar ${user.name}?\n\nEsta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      await deleteUser(user.id);
+    } catch (error) {
+      console.error('❌ Erro ao deletar:', error);
+      alert('❌ Erro ao deletar usuário');
+    }
+  };
 
   // --- CONTEXTO RBAC ---
   // Contém informações do usuário e plantas para decisões de acesso
@@ -88,22 +106,36 @@ const ManagementModal: React.FC<ManagementModalProps> = ({ isOpen, onClose, conf
   const stableTitleRef = useRef(title);
   useEffect(() => { stableTitleRef.current = title; }, [config.type, title]);
 
+
   // dados (MANAGE_USERS)
   // --- DADOS FILTRADOS ---
   // Filtra usuários com base no RBAC do ator E pelo papel selecionado
   const items = isManagingUsers
     ? users.filter(u => {
-        // Verifica visibilidade por RBAC
-        if (!canViewUser(ctx, u, plants)) return false;
+        const canView = canViewUser(ctx, u, plants);
+        const matchesRole = !config.data?.roles || config.data.roles.length === 0 || config.data.roles.includes(u.role as Role);
         
-        // Verifica se é do papel selecionado (se houver filtro)
-        if (config.data?.roles && config.data.roles.length > 0) {
-          return config.data.roles.includes(u.role as Role);
+        if (u.name === 'Marcelo' || u.role === Role.TECHNICIAN) {
+          const plant = plants[0];
+          console.log(`📋 Filtrando ${u.name}:`, {
+            role: u.role,
+            plantIds: u.plantIds,
+            plant: plant,  // ✅ EXPANDA ISTO!
+            actorId: actor.id,
+            actorRole: actor.role,
+            actorPlantIds: actor.plantIds,
+            plantsCount: plants.length,  // ✅ ADICIONE
+            plants: plants.map(p => ({ id: p.id, name: p.name })),  // ✅ ADICIONE
+            canView,
+            matchesRole,
+            resultado: canView && matchesRole
+          });
         }
         
-        return true;
+        return canView && matchesRole;
       })
     : [];
+
 
 
   // helper para habilitar "Novo Usuário" com base no papel alvo
@@ -134,13 +166,26 @@ const ManagementModal: React.FC<ManagementModalProps> = ({ isOpen, onClose, conf
         <p className="font-semibold">{user.name}</p>
         <p className="text-sm text-gray-500">{user.email}</p>
       </div>
-      <button
-        onClick={() => handleEditItem(user)}
-        className="btn-secondary text-sm"
-        disabled={!canEditUser(ctx, user, ctx.plants)}
-      >
-        Editar
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => handleEditItem(user)}
+          className="btn-secondary text-sm"
+          disabled={!canEditUser(ctx, user, ctx.plants)}
+        >
+          Editar
+        </button>
+        
+        {/* ✅ BOTÃO DELETE */}
+        {actor.role === Role.ADMIN && (
+          <button
+            onClick={() => handleDeleteUser(user)}
+            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+            title="Deletar usuário"
+          >
+            🗑️ Deletar
+          </button>
+        )}
+      </div>
     </div>
   );
 

@@ -202,7 +202,7 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, pre
   // Submissão:
   // - Se DataContext já suporta as novas assinaturas com assignments, passe o objeto completo.
   // - Se ainda não, adapte para as funções antigas (ex.: updatePlant(plant, techIds, supIds)).
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // ✅ CRIE O PAYLOAD COM TIPO CORRETO
@@ -213,23 +213,27 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, pre
       trackerCount: formData.trackerCount || 0,
       subPlants: formData.subPlants || [],
       assets: formData.assets || [],
-      coordinatorId: assignedCoordinator || "",
+    };
+
+    // ✅ SEPARE assignments
+    const assignments = {
+      coordinatorId: assignedCoordinator || null,
       supervisorIds: assignedSupervisors || [],
       technicianIds: assignedTechnicians || [],
       assistantIds: assignedAssistants || [],
     };
 
-    // ✅ ADICIONE ID APENAS PARA EDIÇÃO
     const payload = isEditing && initialData 
       ? { ...basePayload, id: initialData.id }
       : basePayload;
 
-    // ✅ ENVIE O PAYLOAD CORRETO
     try {
       if (isEditing && initialData) {
-        updatePlant(payload as Plant);
+        // ✅ PASSE assignments AQUI
+        await updatePlant(payload as Plant, assignments);
       } else {
-        addPlant(basePayload);
+        // ✅ PASSE assignments AQUI TAMBÉM
+        await addPlant(basePayload, assignments);
       }
       onClose();
     } catch (error) {

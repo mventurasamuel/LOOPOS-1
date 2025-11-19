@@ -182,20 +182,41 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
         const [u, p, o] = await Promise.all([
         api('/api/users').then(r => r.ok ? r.json() : []),
-        api('/api/plants').then(r => r.ok ? r.json() : []),  // ✅ Pega do backend
+        api('/api/plants').then(r => r.ok ? r.json() : []),
         api('/api/os').then(r => r.ok ? r.json() : []),
         ]);
+        
         const U = toArray(u);
-        const P = toArray(p).map(normalizePlant);  // ✅ Normaliza
+        const plantsRaw = toArray(p);
+        
+        console.log('🔍 PLANTAS BRUTAS DA API:', plantsRaw);
+        
+        const P = plantsRaw.map(normalizePlant);
+        console.log('🔍 PLANTAS DEPOIS DE NORMALIZE:', P);
+        
         const O = toArray(o);
 
-        if (U.length) setUsers(() => U);
-        if (P.length) setPlants(() => P);  // ✅ Salva no estado
-        if (O.length) setOsList(() => O);
-    } catch {
-        /* mantém estado atual */
+        if (U.length) {
+        console.log('✅ Salvando users');
+        setUsers(() => U);
+        }
+        
+        if (P.length) {
+        console.log('✅ Salvando plants:', P);
+        setPlants(P);  // ✅ SEM CALLBACK
+        }
+        
+        if (O.length) {
+        console.log('✅ Salvando OS');
+        setOsList(() => O);
+        }
+        
+    } catch (err) {
+        console.error('❌ Erro em reloadFromAPI:', err);
     }
     }, [api]);
+
+
 
   const createNotification = (userId: string, message: string) => {
     const n: Notification = { id: `notif-${Date.now()}`, userId, message, read: false, timestamp: new Date().toISOString() };
@@ -224,12 +245,48 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // CRUD Users, Plants, OS... (resto do código igual)
   const addUser = async (u: Omit<User, 'id'>) => {
-    const res = await api('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u) });
-    if (!res.ok) throw new Error('Falha ao criar usuário');
-    const saved: User = await res.json();
-    setUsers(prev => [...prev, saved]);
-    return saved;
+    try {
+        const res = await api('/api/users', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(u) 
+        });
+        if (!res.ok) throw new Error('Falha ao criar usuário');
+        const saved: User = await res.json();
+        setUsers(prev => [...prev, saved]);
+        
+        // ✅ SALVE OS ASSIGNMENTS DE CADA PLANTA
+        if (u.plantIds && u.plantIds.length > 0) {
+        for (const plantId of u.plantIds) {
+            const assignments: AssignmentsDTO = {
+            coordinatorId: u.role === Role.COORDINATOR ? saved.id : null,
+            supervisorIds: u.role === Role.SUPERVISOR ? [saved.id] : (u.supervisorId ? [u.supervisorId] : []),
+            technicianIds: u.role === Role.TECHNICIAN ? [saved.id] : [],
+            assistantIds: u.role === Role.ASSISTANT ? [saved.id] : [],
+            };
+            
+            // ✅ PRECISA PRESERVAR ASSIGNMENTS EXISTENTES!
+            const existingAssignments = plants.find(p => p.id === plantId);
+            if (existingAssignments) {
+            // Pega os assignments atuais da planta
+            if (u.role === Role.TECHNICIAN && u.supervisorId) {
+                // Se é técnico, ADICIONE o supervisor ID!
+                assignments.supervisorIds = [...new Set([...assignments.supervisorIds, u.supervisorId])];
+            }
+            }
+            
+            await putAssignments(plantId, assignments);
+        }
+        }
+        
+        return saved;
+    } catch (err) {
+        console.error('❌ Erro ao criar usuário:', err);
+        throw err;
+    }
   };
+
+
 
   const updateUser = async (u: User) => {
     const res = await api(`/api/users/${u.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u) });

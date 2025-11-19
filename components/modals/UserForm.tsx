@@ -39,16 +39,13 @@ type UserFormData = {
 
 
 const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role }) => {
-  // Acessa os dados e funções do DataContext.
-  const { addUser, updateUser, users, plants } = useData();
+  const { addUser, updateUser, plants, users } = useData();
   const isEditing = !!initialData;
 
-  // ADICIONADO: título estável apenas para esta abertura do modal
   const stableTitleRef = React.useRef(
     isEditing ? `Editar Usuário: ${initialData?.name ?? ''}` : 'Novo Usuário'
   );
 
-  // Função para obter o estado inicial do formulário, seja para um novo usuário ou para edição.
   const getInitialState = (): UserFormData => {
     if (initialData) {
       return {
@@ -68,45 +65,68 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
       email: undefined,
       phone: '',
       password: '',
-      role: role || Role.OPERATOR, // “Operador”
+      role: role || Role.OPERATOR,
       plantIds: [],
       supervisorId: ''
     };
   };
 
-  // Estado para armazenar os dados do formulário.
   const [formData, setFormData] = useState<UserFormData>(getInitialState());
 
-  // ADICIONADO: reset do formulário sempre que o modal abre
+  // ✅ ÚNICO useMemo - supervisores filtrados:
+  const supervisorsForSelectedPlants = React.useMemo(() => {
+    if (!formData.plantIds || formData.plantIds.length === 0) {
+      return [];
+    }
+    
+    return users.filter(u => 
+      u.role === Role.SUPERVISOR &&
+      u.plantIds.some(plantId => formData.plantIds.includes(plantId))
+    );
+  }, [users, formData.plantIds]);
+
   useEffect(() => {
     if (isOpen) {
-      setFormData(getInitialState());
+      setFormData(prev => {
+        const initial = getInitialState();
+        
+        if (initial.role === Role.TECHNICIAN && initial.plantIds.length > 0) {
+          const supervisorsInPlants = users.filter(u => 
+            u.role === Role.SUPERVISOR &&
+            u.plantIds.some(pId => initial.plantIds.includes(pId))
+          );
+          
+          if (supervisorsInPlants.length === 1) {
+            initial.supervisorId = supervisorsInPlants[0].id;
+          }
+        }
+        
+        return initial;
+      });
     }
-  }, [isOpen, initialData, role]);
+  }, [isOpen, initialData, role, users]);
 
-  // Filtra a lista de usuários para obter apenas os supervisores, para o dropdown.
-  const supervisors = users.filter(u => u.role === Role.SUPERVISOR);
-
-  
-  // Mudança geral + normalização de username
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     const v = name === 'username' ? value.toLowerCase() : value;
     setFormData(prev => ({ ...prev, [name]: v }));
   };
 
-  // Seleção de usinas
   const handlePlantChange = (plantId: string) => {
     setFormData(prev => {
       const current = prev.plantIds;
       const plantIds = current.includes(plantId)
         ? current.filter(id => id !== plantId)
         : [...current, plantId];
+      
+      if (plantIds.length === 0) {
+        return { ...prev, plantIds, supervisorId: '' };
+      }
+      
       return { ...prev, plantIds };
     });
   };
 
-  // Submit
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const { name, username, phone, password, role: formRole } = formData;
@@ -123,7 +143,7 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
         email: formData.email,
         phone: formData.phone,
         role: formData.role,
-        plantIds: formData.plantIds,  // ← Certifique-se que está aqui
+        plantIds: formData.plantIds,
         supervisorId: formData.supervisorId,
       };
       
@@ -131,9 +151,7 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
         (dataToUpdate as any).password = formData.password;
       }
       
-      // ✅ ADICIONE ISTO:
       console.log('Enviando para backend:', dataToUpdate);
-      
       updateUser(dataToUpdate as User);
     } else {
       addUser(formData);
@@ -141,8 +159,6 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
     
     onClose();
   };
-
-
 
   return (
     <Modal
@@ -171,18 +187,19 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Usuário">
             <input
-            type="text"
-            name="username"
-            value={formData.username}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (/^[a-z0-9._-]*$/i.test(val) && val.length <= 32) {
-                setFormData(prev => ({ ...prev, username: val }));
-              }
-            }}
-            maxLength={32}
-            placeholder="ex: usuario.nome"
-          />
+              type="text"
+              name="username"
+              value={formData.username}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (/^[a-z0-9._-]*$/i.test(val) && val.length <= 32) {
+                  setFormData(prev => ({ ...prev, username: val }));
+                }
+              }}
+              maxLength={32}
+              placeholder="ex: usuario.nome"
+              className={inputClasses}
+            />
           </FormField>
           <FormField label="Telefone">
             <input
@@ -231,21 +248,6 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
           </select>
         </FormField>
 
-        {formData.role === Role.TECHNICIAN && (
-          <FormField label="Supervisor Responsável">
-            <select
-              name="supervisorId"
-              value={formData.supervisorId}
-              onChange={handleChange}
-              required
-              className={inputClasses}
-            >
-              <option value="">Selecione um supervisor</option>
-              {supervisors.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </FormField>
-        )}
-
         {(formData.role === Role.TECHNICIAN || formData.role === Role.SUPERVISOR) && (
           <FormField label="Usinas Associadas">
             <div className="grid grid-cols-2 gap-2 p-3 border dark:border-gray-600 rounded-md max-h-32 overflow-y-auto">
@@ -263,7 +265,25 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
             </div>
           </FormField>
         )}
+
+        {formData.role === Role.TECHNICIAN && (
+          <FormField label="Supervisor Responsável">
+            <select
+              name="supervisorId"
+              value={formData.supervisorId}
+              onChange={handleChange}
+              required
+              className={inputClasses}
+            >
+              <option value="">Selecione um supervisor</option>
+              {supervisorsForSelectedPlants.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </FormField>
+        )}
       </form>
+
     </Modal>
   );
 };

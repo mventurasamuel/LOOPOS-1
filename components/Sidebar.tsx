@@ -210,7 +210,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     <>
       {/* Overlay do drawer (mobile) */}
       <div
-        className={`fixed inset-0 z-30 bg-black bg-opacity-50 lg:hidden transition-opacity ${isMobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 z-30 bg-black bg-opacity-50 lg:hidden transition-opacity ${isMobileOpen ? 'opacity-30' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setMobileOpen(false)}
       />
       {/* Sidebar mobile */}

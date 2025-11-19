@@ -54,6 +54,11 @@ def create_user(request: Request, payload: UserCreate):
     if _exists_username(users, payload.username):
         raise HTTPException(status_code=409, detail="username already exists")
     
+    # ✅ Normalize supervisorId: "" → None
+    supervisor_id = payload.dict().get("supervisorId", None)
+    if not supervisor_id or supervisor_id.strip() == "":
+        supervisor_id = None
+    
     new_user = {
         "id": str(uuid4()),
         "name": payload.name,
@@ -64,13 +69,14 @@ def create_user(request: Request, payload: UserCreate):
         "role": payload.role,
         "can_login": True,
         "plantIds": payload.dict().get("plantIds", []),
-        "supervisorId": payload.dict().get("supervisorId", None),
+        "supervisorId": supervisor_id,  # ✅ Agora é None ou um ID válido
     }
     
     users.append(new_user)
     _save_users(users)
-    sync_assignments_from_users()  # ✅ ADICIONE ISTO!
+    sync_assignments_from_users()
     return new_user
+
 
 
 
@@ -79,24 +85,24 @@ def update_user(user_id: str, payload: UserUpdate, request: Request):
     users = _all_users()
     actor = _actor_from_headers(request, users)
     
-    # Encontra o usuário atual
     current_user = next((u for u in users if u["id"] == user_id), None)
     if not current_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # ✅ IMPORTANTE: Supervisor pode editar A SI MESMO
-    # Verifique se actor.id === user_id (editando a si mesmo)
     actor_id = actor.get("id")
     if actor_id and actor_id == user_id:
-        # Pode editar a si mesmo
         pass
     elif not can_edit_user(actor, current_user):
-        # Caso contrário, verifica RBAC
         raise HTTPException(status_code=403, detail="forbidden")
     
     update_data = payload.dict(exclude_unset=True)
     
-    # Valida username se foi mudado
+    # ✅ Normalize supervisorId aqui também
+    if "supervisorId" in update_data:
+        supervisor_id = update_data.get("supervisorId")
+        if not supervisor_id or (isinstance(supervisor_id, str) and supervisor_id.strip() == ""):
+            update_data["supervisorId"] = None
+    
     if "username" in update_data and update_data["username"] != current_user.get("username"):
         if _exists_username(users, update_data["username"], skip_id=user_id):
             raise HTTPException(status_code=409, detail="username already exists")
@@ -106,10 +112,11 @@ def update_user(user_id: str, payload: UserUpdate, request: Request):
             updated = {**u, **update_data}
             users[i] = updated
             _save_users(users)
-            sync_assignments_from_users()  # ✅ Usa a função importada
+            sync_assignments_from_users()
             return updated
     
     raise HTTPException(status_code=404, detail="User not found")
+
 
 
 @router.delete("/{user_id}")

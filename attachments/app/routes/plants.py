@@ -54,9 +54,6 @@ def _sync_user_plant_links(plant_id: str, ap: AssignmentsPayload):
 
 @router.get("", response_model=List[PlantOut])
 def list_plants():
-    # ✅ Sincroniza antes de listar
-    #sync_assignments_from_users()
-    
     plants = _all_plants()
     assignments = _all_assignments()
     
@@ -69,14 +66,18 @@ def list_plants():
         plant_assigns = assignments.get(plant_id, {})
         
         print(f"DEBUG - plant_id: {plant_id}")
-        print(f"DEBUG - plant_assigns: {plant_assigns}")
+        print(f"DEBUG - plant_assigns ANTES: {plant_assigns}")
         
         plant["coordinatorId"] = plant_assigns.get("coordinatorId", "")
         plant["supervisorIds"] = plant_assigns.get("supervisorIds", [])
         plant["technicianIds"] = plant_assigns.get("technicianIds", [])
         plant["assistantIds"] = plant_assigns.get("assistantIds", [])
+        
+        print(f"DEBUG - plant_assigns DEPOIS: {plant}")
     
+    print(f"DEBUG - Retornando plants: {plants}")  # ✅ ADICIONE ISTO!
     return plants
+
 
 
 
@@ -104,7 +105,7 @@ def create_plant(payload: PlantCreate):
         assistantIds=assistantIds,
     )
     assignments[plant["id"]] = ap.dict()
-    _save_assignments(assignments)
+    _save_assignments(assignments)  # ✅ CRÍTICO!
     _sync_user_plant_links(plant["id"], ap)
 
     # ✅ UM ÚNICO RETURN
@@ -115,6 +116,7 @@ def create_plant(payload: PlantCreate):
         "technicianIds": technicianIds,
         "assistantIds": assistantIds,
     }
+
 
 
 
