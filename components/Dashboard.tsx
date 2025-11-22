@@ -10,6 +10,8 @@ import { OS } from '../types';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import Board from './Board';
+import Schedule52Weeks from './Schedule52Weeks';
+import Calendar from './Calendar';
 import OSDetailModal from './modals/OSDetailModal';
 import OSForm from './modals/OSForm';
 import ManagementModal from './modals/ManagementModal';
@@ -25,6 +27,9 @@ interface ModalConfig {
   data?: any; // Dados a serem passados para o modal (ex: a OS a ser editada, usuário a editar, etc.).
 }
 
+// Tipo para as diferentes views disponíveis
+export type ViewType = 'KANBAN' | 'SCHEDULE_52_WEEKS' | 'CALENDAR';
+
 // --- COMPONENTE PRINCIPAL ---
 const Dashboard: React.FC = () => {
   // Acessa os dados e funções do contexto principal.
@@ -36,6 +41,7 @@ const Dashboard: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false); // Estado de recolhimento da sidebar no desktop (collapse icon).
   const [searchTerm, setSearchTerm] = useState(''); // Termo de busca inserido no cabeçalho para filtrar OSs.
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null); // Configuração do modal atualmente aberto, ou nulo se nenhum.
+  const [currentView, setCurrentView] = useState<ViewType>('KANBAN'); // View atual: Kanban, Cronograma ou Calendário
 
   // --- FILTROS E MEMOIZAÇÃO ---
   // `useMemo` otimiza a performance filtrando as OSs apenas quando a lista ou o termo de busca mudam.
@@ -80,6 +86,7 @@ const Dashboard: React.FC = () => {
             isOpen={true}
             onClose={handleCloseModal}
             initialData={modalConfig.data}
+            setModalConfig={setModalConfig}
           />
         );
 
@@ -115,6 +122,7 @@ const Dashboard: React.FC = () => {
             onClose={() => setModalConfig(parentConfigForUser)}
             initialData={modalConfig.data?.user}
             role={modalConfig.data?.role}
+            setModalConfig={setModalConfig}
           />
         );
       }
@@ -130,6 +138,7 @@ const Dashboard: React.FC = () => {
             onClose={() => setModalConfig(parentConfigForPlant)}
             initialData={modalConfig.data?.plant}
             presetClient={modalConfig.data?.presetClient}
+            setModalConfig={setModalConfig}
           />
         );
       }
@@ -155,6 +164,8 @@ const Dashboard: React.FC = () => {
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setSidebarCollapsed}
         setModalConfig={setModalConfig}
+        currentView={currentView}
+        setCurrentView={setCurrentView}
       />
 
       {/* Conteúdo principal: header + painel Kanban */}
@@ -167,14 +178,30 @@ const Dashboard: React.FC = () => {
           setSearchTerm={setSearchTerm}
         />
 
-        {/* Painel Kanban: exibe OSs em colunas por status */}
-        <main className="flex-1 overflow-x-auto overflow-y-hidden">
-          <Board
-            osList={filteredOS} // Passa a lista já filtrada por termo de busca
-            onUpdateOS={updateOS}
-            onCardClick={handleCardClick}
-            onOpenDownloadFilter={handleOpenDownloadFilter}
-          />
+        {/* Conteúdo principal: renderiza a view selecionada (Kanban, Cronograma ou Calendário) */}
+        <main className="flex-1 overflow-hidden">
+          {currentView === 'KANBAN' && (
+            <div className="h-full overflow-x-auto overflow-y-hidden">
+              <Board
+                osList={filteredOS} // Passa a lista já filtrada por termo de busca
+                onUpdateOS={updateOS}
+                onCardClick={handleCardClick}
+                onOpenDownloadFilter={handleOpenDownloadFilter}
+              />
+            </div>
+          )}
+          {currentView === 'SCHEDULE_52_WEEKS' && (
+            <Schedule52Weeks
+              osList={filteredOS}
+              onCardClick={handleCardClick}
+            />
+          )}
+          {currentView === 'CALENDAR' && (
+            <Calendar
+              osList={filteredOS}
+              onCardClick={handleCardClick}
+            />
+          )}
         </main>
       </div>
 

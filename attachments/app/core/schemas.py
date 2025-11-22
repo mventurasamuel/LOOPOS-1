@@ -24,6 +24,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: Optional[str] = None
+    plantIds: List[str] = Field(default_factory=list)  # ✅ ADICIONADO: lista de IDs das usinas (sempre lista, nunca None)
 
 
 class UserUpdate(BaseModel):  # ✅ NÃO herda de UserBase, define seus próprios campos

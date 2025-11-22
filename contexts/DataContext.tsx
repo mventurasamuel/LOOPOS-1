@@ -246,33 +246,59 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // CRUD Users, Plants, OS... (resto do código igual)
   const addUser = async (u: Omit<User, 'id'>) => {
     try {
+        console.log('📤 FRONTEND - Enviando usuário para API:', u);
+        
         const res = await api('/api/users', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(u) 
         });
-        if (!res.ok) throw new Error('Falha ao criar usuário');
+        
+        console.log('📥 FRONTEND - Resposta da API:', res.status, res.statusText);
+        
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error('❌ FRONTEND - Erro na resposta:', errorText);
+            throw new Error(`Falha ao criar usuário: ${res.status} ${res.statusText} - ${errorText}`);
+        }
+        
         const saved: User = await res.json();
+        console.log('✅ FRONTEND - Usuário criado com sucesso:', saved);
         setUsers(prev => [...prev, saved]);
         
         // ✅ SALVE OS ASSIGNMENTS DE CADA PLANTA
         if (u.plantIds && u.plantIds.length > 0) {
         for (const plantId of u.plantIds) {
+            // ✅ BUSCA ASSIGNMENTS EXISTENTES DA PLANTA
+            let existingAssignments: AssignmentsDTO | null = null;
+            try {
+                const res = await api(`/api/plants/${plantId}/assignments`);
+                if (res.ok) {
+                    existingAssignments = await res.json();
+                }
+            } catch (err) {
+                console.warn('Não foi possível buscar assignments existentes:', err);
+            }
+            
+            // ✅ PRESERVA ASSIGNMENTS EXISTENTES E ADICIONA O NOVO USUÁRIO
             const assignments: AssignmentsDTO = {
-            coordinatorId: u.role === Role.COORDINATOR ? saved.id : null,
-            supervisorIds: u.role === Role.SUPERVISOR ? [saved.id] : (u.supervisorId ? [u.supervisorId] : []),
-            technicianIds: u.role === Role.TECHNICIAN ? [saved.id] : [],
-            assistantIds: u.role === Role.ASSISTANT ? [saved.id] : [],
+            coordinatorId: u.role === Role.COORDINATOR 
+                ? saved.id 
+                : (existingAssignments?.coordinatorId || null),
+            supervisorIds: u.role === Role.SUPERVISOR 
+                ? [...new Set([...(existingAssignments?.supervisorIds || []), saved.id])]
+                : (existingAssignments?.supervisorIds || []),
+            technicianIds: u.role === Role.TECHNICIAN 
+                ? [...new Set([...(existingAssignments?.technicianIds || []), saved.id])]
+                : (existingAssignments?.technicianIds || []),
+            assistantIds: u.role === Role.ASSISTANT 
+                ? [...new Set([...(existingAssignments?.assistantIds || []), saved.id])]
+                : (existingAssignments?.assistantIds || []),
             };
             
-            // ✅ PRECISA PRESERVAR ASSIGNMENTS EXISTENTES!
-            const existingAssignments = plants.find(p => p.id === plantId);
-            if (existingAssignments) {
-            // Pega os assignments atuais da planta
+            // Se é técnico e tem supervisor, garante que o supervisor está na lista
             if (u.role === Role.TECHNICIAN && u.supervisorId) {
-                // Se é técnico, ADICIONE o supervisor ID!
                 assignments.supervisorIds = [...new Set([...assignments.supervisorIds, u.supervisorId])];
-            }
             }
             
             await putAssignments(plantId, assignments);

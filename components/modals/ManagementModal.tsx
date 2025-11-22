@@ -234,6 +234,7 @@ const ManagementModal: React.FC<ManagementModalProps> = ({ isOpen, onClose, conf
               onClose={() => setModalConfig(config.data?.parentConfig)}
               initialData={config.data?.user}
               role={config.data?.role}
+              setModalConfig={setModalConfig}
             />
           )}
           {config.type === 'PLANT_FORM' && (
@@ -242,6 +243,7 @@ const ManagementModal: React.FC<ManagementModalProps> = ({ isOpen, onClose, conf
               onClose={() => setModalConfig(config.data?.parentConfig)}
               initialData={config.data?.plant}
               presetClient={config.data?.presetClient}
+              setModalConfig={setModalConfig}
             />
           )}
         </Portal>

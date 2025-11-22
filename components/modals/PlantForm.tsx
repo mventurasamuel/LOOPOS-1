@@ -26,21 +26,40 @@ const MultiAssignField: React.FC<{
   users: Array<{ id: string; name: string }>;
   selected: string[];
   onToggle: (id: string) => void;
-}> = ({ title, users, selected, onToggle }) => (
+  role: Role;
+  onAddNew?: (role: Role) => void;
+}> = ({ title, users, selected, onToggle, role, onAddNew }) => (
   <FormField label={title}>
-    <div className="grid grid-cols-2 gap-2 p-2 border dark:border-gray-600 rounded-md max-h-32 overflow-y-auto">
-      {users.map(user => (
-        <label key={user.id} className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={selected.includes(user.id)}
-            onChange={() => onToggle(user.id)}
-            className="rounded"
-          />
-          <span>{user.name}</span>
-        </label>
-      ))}
-    </div>
+    {users.length === 0 ? (
+      <div className="p-4 border dark:border-gray-600 rounded-md text-center">
+        <p className="text-sm text-gray-400 dark:text-gray-500 mb-3">
+          Nenhum {title.toLowerCase().replace('atribuir ', '')} disponível
+        </p>
+        {onAddNew && (
+          <button
+            type="button"
+            onClick={() => onAddNew(role)}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+          >
+            Criar {title.replace('Atribuir ', '')}
+          </button>
+        )}
+      </div>
+    ) : (
+      <div className="grid grid-cols-2 gap-2 p-2 border dark:border-gray-600 rounded-md max-h-32 overflow-y-auto">
+        {users.map(user => (
+          <label key={user.id} className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={selected.includes(user.id)}
+              onChange={() => onToggle(user.id)}
+              className="rounded"
+            />
+            <span>{user.name}</span>
+          </label>
+        ))}
+      </div>
+    )}
   </FormField>
 );
 
@@ -49,6 +68,7 @@ interface PlantFormProps {
   onClose: () => void;
   initialData?: Plant;      // Edição quando presente
   presetClient?: string;    // Cliente pré-selecionado quando criação parte de um cliente
+  setModalConfig?: (config: any) => void; // Para abrir formulário de criação de usuário
 }
 
 // Estado do formulário (campos da usina)
@@ -61,8 +81,31 @@ type PlantFormData = {
   assets: string[];
 };
 
-const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, presetClient }) => {
+const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, presetClient, setModalConfig }) => {
   const { users, addPlant, updatePlant } = useData();
+  
+  // Função para abrir formulário de criação de usuário
+  const handleAddNewUser = (role: Role) => {
+    if (setModalConfig) {
+      setModalConfig({
+        type: 'USER_FORM',
+        data: {
+          role,
+          parentConfig: {
+            type: 'PLANT_FORM',
+            data: {
+              plant: initialData,
+              presetClient,
+              parentConfig: {
+                type: 'MANAGE_PLANTS',
+                data: {}
+              }
+            }
+          }
+        }
+      });
+    }
+  };
 
   // Coleções por função (Coordenador e Auxiliar são novos papéis; ver patch no types/DataContext)
   const allCoordinators = users.filter(u => u.role === Role.COORDINATOR);
@@ -340,16 +383,33 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, pre
         {/* Atribuições (Coordenador: único; demais: múltiplos) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t dark:border-gray-700">
           <FormField label="Atribuir Coordenador">
-            <select
-              value={assignedCoordinator ?? ''}
-              onChange={(e) => setAssignedCoordinator(e.target.value || null)}
-              className={inputBase}
-            >
-              <option value="">— Nenhum —</option>
-              {allCoordinators.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+            {allCoordinators.length === 0 ? (
+              <div className="p-4 border dark:border-gray-600 rounded-md text-center">
+                <p className="text-sm text-gray-400 dark:text-gray-500 mb-3">
+                  Nenhum coordenador disponível
+                </p>
+                {setModalConfig && (
+                  <button
+                    type="button"
+                    onClick={() => handleAddNewUser(Role.COORDINATOR)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    Criar Coordenador
+                  </button>
+                )}
+              </div>
+            ) : (
+              <select
+                value={assignedCoordinator ?? ''}
+                onChange={(e) => setAssignedCoordinator(e.target.value || null)}
+                className={inputBase}
+              >
+                <option value="">— Nenhum —</option>
+                {allCoordinators.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            )}
           </FormField>
 
           <MultiAssignField
@@ -357,18 +417,24 @@ const PlantForm: React.FC<PlantFormProps> = ({ isOpen, onClose, initialData, pre
             users={allSupervisors}
             selected={assignedSupervisors}
             onToggle={(id) => toggleInArray(id, setAssignedSupervisors)}
+            role={Role.SUPERVISOR}
+            onAddNew={setModalConfig ? handleAddNewUser : undefined}
           />
           <MultiAssignField
             title="Atribuir Técnico"
             users={allTechnicians}
             selected={assignedTechnicians}
             onToggle={(id) => toggleInArray(id, setAssignedTechnicians)}
+            role={Role.TECHNICIAN}
+            onAddNew={setModalConfig ? handleAddNewUser : undefined}
           />
           <MultiAssignField
             title="Atribuir Auxiliar"
             users={allAssistants}
             selected={assignedAssistants}
             onToggle={(id) => toggleInArray(id, setAssignedAssistants)}
+            role={Role.ASSISTANT}
+            onAddNew={setModalConfig ? handleAddNewUser : undefined}
           />
         </div>
 

@@ -23,6 +23,7 @@ interface UserFormProps {
   onClose: () => void;
   initialData?: User; // Dados do usuário a ser editado. Se ausente, é um formulário de criação.
   role?: Role; // Pré-seleciona a função ao criar um novo usuário a partir de um modal de gerenciamento específico.
+  setModalConfig?: (config: any) => void; // Para abrir formulário de criação de usuário
 }
 
 // Cria tipo para facilitar o estado do formulário sem Partial
@@ -38,9 +39,35 @@ type UserFormData = {
 };
 
 
-const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role }) => {
+const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role, setModalConfig }) => {
   const { addUser, updateUser, plants, users } = useData();
   const isEditing = !!initialData;
+  
+  // Função para abrir formulário de criação de supervisor
+  const handleAddNewSupervisor = () => {
+    if (setModalConfig && formData.plantIds.length > 0) {
+      setModalConfig({
+        type: 'USER_FORM',
+        data: {
+          role: Role.SUPERVISOR,
+          parentConfig: {
+            type: 'USER_FORM',
+            data: {
+              user: initialData,
+              role: formData.role,
+              parentConfig: initialData ? undefined : {
+                type: 'MANAGE_USERS',
+                data: {
+                  roles: [formData.role],
+                  title: formData.role === Role.TECHNICIAN ? 'Técnicos' : 'Usuários'
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+  };
 
   const stableTitleRef = React.useRef(
     isEditing ? `Editar Usuário: ${initialData?.name ?? ''}` : 'Novo Usuário'
@@ -127,7 +154,7 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const { name, username, phone, password, role: formRole } = formData;
     
@@ -136,28 +163,47 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
       return;
     }
 
-    if (isEditing) {
-      const dataToUpdate: Partial<User> = {
-        ...initialData,
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        role: formData.role,
-        plantIds: formData.plantIds,
-        supervisorId: formData.supervisorId,
-      };
-      
-      if (formData.password && formData.password.trim() !== '') {
-        (dataToUpdate as any).password = formData.password;
+    try {
+      if (isEditing) {
+        const dataToUpdate: Partial<User> = {
+          ...initialData,
+          name: formData.name,
+          email: formData.email || undefined, // Converte string vazia para undefined
+          phone: formData.phone,
+          role: formData.role,
+          plantIds: formData.plantIds,
+          supervisorId: formData.supervisorId || undefined, // Converte string vazia para undefined
+        };
+        
+        if (formData.password && formData.password.trim() !== '') {
+          (dataToUpdate as any).password = formData.password;
+        }
+        
+        console.log('📤 Enviando atualização para backend:', dataToUpdate);
+        await updateUser(dataToUpdate as User);
+      } else {
+        // ✅ Prepara dados para criação, convertendo strings vazias para undefined
+        const userData: Omit<User, 'id'> = {
+          name: formData.name,
+          username: formData.username,
+          email: formData.email || undefined,
+          phone: formData.phone,
+          password: formData.password,
+          role: formData.role,
+          plantIds: formData.plantIds || [],
+          supervisorId: formData.supervisorId || undefined,
+          can_login: true,
+        };
+        
+        console.log('📤 Enviando criação para backend:', userData);
+        await addUser(userData);
       }
       
-      console.log('Enviando para backend:', dataToUpdate);
-      updateUser(dataToUpdate as User);
-    } else {
-      addUser(formData);
+      onClose();
+    } catch (error: any) {
+      console.error('❌ Erro ao salvar usuário:', error);
+      alert(`Erro ao salvar usuário: ${error.message || 'Erro desconhecido'}`);
     }
-    
-    onClose();
   };
 
   return (
@@ -268,18 +314,37 @@ const UserForm: React.FC<UserFormProps> = ({ isOpen, onClose, initialData, role 
 
         {formData.role === Role.TECHNICIAN && (
           <FormField label="Supervisor Responsável">
-            <select
-              name="supervisorId"
-              value={formData.supervisorId}
-              onChange={handleChange}
-              required
-              className={inputClasses}
-            >
-              <option value="">Selecione um supervisor</option>
-              {supervisorsForSelectedPlants.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            {supervisorsForSelectedPlants.length === 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  {formData.plantIds.length === 0 
+                    ? 'Selecione pelo menos uma usina para ver os supervisores disponíveis'
+                    : 'Nenhum supervisor disponível para as usinas selecionadas'}
+                </p>
+                {formData.plantIds.length > 0 && setModalConfig && (
+                  <button
+                    type="button"
+                    onClick={handleAddNewSupervisor}
+                    className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    Criar Supervisor
+                  </button>
+                )}
+              </div>
+            ) : (
+              <select
+                name="supervisorId"
+                value={formData.supervisorId}
+                onChange={handleChange}
+                required
+                className={inputClasses}
+              >
+                <option value="">Selecione um supervisor</option>
+                {supervisorsForSelectedPlants.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            )}
           </FormField>
         )}
       </form>

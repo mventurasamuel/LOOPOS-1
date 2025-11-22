@@ -13,6 +13,7 @@ interface OSFormProps {
   isOpen: boolean;
   onClose: () => void;
   initialData?: OS; // Dados da OS a ser editada. Se ausente, é um formulário de criação.
+  setModalConfig?: (config: any) => void; // Para abrir formulário de criação de usuário
 }
 
 type NewAttachmentDraft = {
@@ -21,11 +22,27 @@ type NewAttachmentDraft = {
   caption: string;
 };
 
-const OSForm: React.FC<OSFormProps> = ({ isOpen, onClose, initialData }) => {
+const OSForm: React.FC<OSFormProps> = ({ isOpen, onClose, initialData, setModalConfig }) => {
   // Acessa contextos de autenticação e dados.
   const { user } = useAuth();
   const { plants, users, addOS, updateOS } = useData();
   const isEditing = !!initialData;
+  
+  // Função para abrir formulário de criação de supervisor
+  const handleAddNewSupervisor = () => {
+    if (setModalConfig && formData.plantId) {
+      setModalConfig({
+        type: 'USER_FORM',
+        data: {
+          role: Role.SUPERVISOR,
+          parentConfig: {
+            type: 'OS_FORM',
+            data: initialData
+          }
+        }
+      });
+    }
+  };
 
   // Padronização de classes com contraste e foco visíveis (WCAG 1.4.3, 1.4.11 e 2.4.7).
   const inputClasses =
@@ -91,6 +108,12 @@ const OSForm: React.FC<OSFormProps> = ({ isOpen, onClose, initialData }) => {
     const tech = users.find(u => u.id === formData.technicianId);
     return users.find(u => u.id === tech?.supervisorId) || null;
   }, [formData.technicianId, users]);
+
+  // `useMemo` para verificar se há supervisores disponíveis para a usina selecionada
+  const availableSupervisors = useMemo(() => {
+    if (!formData.plantId) return [];
+    return users.filter(u => u.role === Role.SUPERVISOR && u.plantIds?.includes(formData.plantId));
+  }, [formData.plantId, users]);
 
   // `useEffect` para limpar a seleção de técnico/supervisor quando a usina muda no formulário de criação.
   useEffect(() => {
@@ -281,13 +304,42 @@ const handleAddAttachments = async () => {
 
           <div>
             <label className={groupLabelClasses}>Supervisor</label>
-            <input
-              type="text"
-              value={supervisorForSelectedTech?.name || 'Selecione um técnico'}
-              readOnly
-              className={readOnlyClasses}
-              aria-label="Supervisor"
-            />
+            {!formData.technicianId ? (
+              <input
+                type="text"
+                value="Selecione um técnico"
+                readOnly
+                className={readOnlyClasses}
+                aria-label="Supervisor"
+              />
+            ) : supervisorForSelectedTech ? (
+              <input
+                type="text"
+                value={supervisorForSelectedTech.name}
+                readOnly
+                className={readOnlyClasses}
+                aria-label="Supervisor"
+              />
+            ) : (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value="Nenhum supervisor atribuído ao técnico"
+                  readOnly
+                  className={readOnlyClasses}
+                  aria-label="Supervisor"
+                />
+                {availableSupervisors.length === 0 && setModalConfig && formData.plantId && (
+                  <button
+                    type="button"
+                    onClick={handleAddNewSupervisor}
+                    className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                  >
+                    Criar Supervisor para esta Usina
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
