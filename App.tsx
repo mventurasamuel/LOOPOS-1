@@ -1,11 +1,12 @@
 // App.tsx (ordem final dos providers)
-// A ordem é crucial: DataProvider POR FORA, AuthProvider POR DENTRO.
+// A ordem é crucial: DataProvider POR FORA, AuthProvider e SupabaseProvider POR DENTRO.
 // Motivo: o AuthProvider consome useData; se ele estiver fora, dispara o erro.
 
 import React from 'react';
 import './style.css';
 import { DataProvider } from './contexts/DataContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { SupabaseProvider } from './contexts/SupabaseContext';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 
@@ -27,16 +28,19 @@ const App: React.FC = () => {
   return (
     // DataProvider: Fornece todos os dados da aplicação (usuários, usinas, OSs).
     <DataProvider>
-      {/* AuthProvider: Gerencia o estado de login/logout do usuário.
-          Ele fica DENTRO do DataProvider, pois consome a lista de usuários via useData
-          e injeta headers no DataContext após o login. */}
-      <AuthProvider>
-        {/* Div principal que define o tema de cores da aplicação. */}
-        <div className="min-h-screen text-gray-800 dark:text-gray-200">
-          {/* Renderiza o conteúdo da aplicação, que será ou Login ou Dashboard. */}
-          <AppContent />
-        </div>
-      </AuthProvider>
+      {/* SupabaseProvider: Fornece autenticação e dados do Supabase */}
+      <SupabaseProvider>
+        {/* AuthProvider: Gerencia o estado de login/logout do usuário.
+            Ele fica DENTRO do DataProvider, pois consome a lista de usuários via useData
+            e injeta headers no DataContext após o login. */}
+        <AuthProvider>
+          {/* Div principal que define o tema de cores da aplicação. */}
+          <div className="min-h-screen text-gray-800 dark:text-gray-200">
+            {/* Renderiza o conteúdo da aplicação, que será ou Login ou Dashboard. */}
+            <AppContent />
+          </div>
+        </AuthProvider>
+      </SupabaseProvider>
     </DataProvider>
   );
 };
